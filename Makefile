@@ -20,7 +20,13 @@ ci-cov-api:
 	pytest tests/api tests/contract tests/adversarial -q --cov=app.api --cov-report=term-missing --cov-fail-under=80
 
 eval:
-	@echo "Eval harness will be added by Phase B agent B2."
+	pytest tests/eval -q
+
+eval-real:
+	RUN_LLM_TESTS=1 pytest tests/eval -q
+
+regenerate-fixtures:
+	python tests/fixtures/labels/generate_fixtures.py
 
 lint:
 	ruff check app tests

@@ -1,15 +1,23 @@
 /**
  * SingleLabelForm — Screen 1.
  *
- * File input + form fields → POST /verify (multipart) → verdict banner + field results.
+ * Two ways to populate it:
+ *   1. Manually — agent types in the fields and chooses a file.
+ *   2. From the application queue — `prefill` prop seeds the form values
+ *      and pre-attaches the label image (fetched from a URL relative to
+ *      the site root, e.g. /sample-labels/01_happy_old_tom.png).
+ *
+ * Either way, submission goes through the same POST /verify multipart
+ * call. The backend doesn't know or care how the values were sourced.
  *
  * SECURITY: API-supplied text (brand names, detail strings) passes through
  * DOMPurify.sanitize() before rendering. JSX interpolation only — no innerHTML.
  */
 
 import DOMPurify from "dompurify";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ApiError, verifySingleLabel } from "../api/client";
+import type { MockApplication } from "../data/mockApplications";
 import type { VerifyRequest, VerifyResponse, Verdict } from "../api/types";
 import { ResultCard } from "./ResultCard";
 
@@ -51,19 +59,72 @@ const EMPTY_FORM: FormValues = {
   net_contents: "",
 };
 
-export function SingleLabelForm() {
+interface SingleLabelFormProps {
+  /** Optional pre-population from the application queue. */
+  prefill?: MockApplication | null;
+}
+
+export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [form, setForm] = useState<FormValues>(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [prefilledFromQueue, setPrefilledFromQueue] = useState(false);
+
+  // When a queue application is passed in, seed form values and fetch the
+  // attached label image into a File object so submission still works the
+  // same way (multipart upload).
+  useEffect(() => {
+    let cancelled = false;
+    if (!prefill) {
+      return;
+    }
+    setForm({
+      brand: prefill.fields.brand,
+      class_type: prefill.fields.class_type,
+      abv_percent: prefill.fields.abv_percent.toString(),
+      net_contents: prefill.fields.net_contents,
+    });
+    setResult(null);
+    setError(null);
+    setPrefilledFromQueue(true);
+
+    (async () => {
+      try {
+        const response = await fetch(prefill.label_image_url);
+        if (!response.ok) {
+          throw new Error(`Failed to load attached label (${response.status})`);
+        }
+        const blob = await response.blob();
+        const filename = prefill.label_image_url.split("/").pop() ?? "label.png";
+        const file = new File([blob], filename, { type: blob.type || "image/png" });
+        if (!cancelled) {
+          setSelectedFile(file);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            `Couldn't load the attached label image: ${
+              err instanceof Error ? err.message : "unknown error"
+            }`,
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [prefill]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     setSelectedFile(file);
     setResult(null);
     setError(null);
+    setPrefilledFromQueue(false);
   }
 
   function handleFieldChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -113,6 +174,7 @@ export function SingleLabelForm() {
     setSelectedFile(null);
     setResult(null);
     setError(null);
+    setPrefilledFromQueue(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -120,8 +182,17 @@ export function SingleLabelForm() {
     <section className="screen">
       <h2 className="screen__title">Single Label Verification</h2>
       <p className="screen__subtitle">
-        Upload one label image and enter the application form values to verify.
+        {prefilledFromQueue
+          ? "Application data and label image were loaded from the queue. Review and submit to verify."
+          : "Application data (in production this comes from COLAs Online) and the label artwork. Submit to verify the label matches the application."}
       </p>
+
+      {prefilledFromQueue && prefill && (
+        <div className="prefill-banner" role="status">
+          Loaded from COLA queue: <strong>{DOMPurify.sanitize(prefill.cola_id)}</strong>{" "}
+          — {DOMPurify.sanitize(prefill.applicant)}
+        </div>
+      )}
 
       <form className="verify-form" onSubmit={handleSubmit} noValidate>
         <div className="form-group">
@@ -136,7 +207,7 @@ export function SingleLabelForm() {
             onChange={handleFileChange}
             className="form-input form-input--file"
             aria-describedby="single-image-hint"
-            required
+            required={!prefilledFromQueue}
           />
           <span id="single-image-hint" className="form-hint">
             JPEG, PNG, or WebP — max 10 MB
@@ -148,72 +219,81 @@ export function SingleLabelForm() {
           )}
         </div>
 
-        <div className="form-group">
-          <label htmlFor="brand" className="form-label">
-            Brand name <span className="required">*</span>
-          </label>
-          <input
-            id="brand"
-            name="brand"
-            type="text"
-            value={form.brand}
-            onChange={handleFieldChange}
-            className="form-input"
-            placeholder="e.g. Old Tom Distillery"
-            required
-          />
-        </div>
+        <fieldset className="form-fieldset">
+          <legend className="form-fieldset__legend">
+            Application data
+            <span className="form-fieldset__legend-aux">
+              {prefilledFromQueue ? "from COLA queue" : "from COLA / manual entry"}
+            </span>
+          </legend>
 
-        <div className="form-group">
-          <label htmlFor="class_type" className="form-label">
-            Class / type <span className="required">*</span>
-          </label>
-          <input
-            id="class_type"
-            name="class_type"
-            type="text"
-            value={form.class_type}
-            onChange={handleFieldChange}
-            className="form-input"
-            placeholder="e.g. Kentucky Straight Bourbon Whiskey"
-            required
-          />
-        </div>
+          <div className="form-group">
+            <label htmlFor="brand" className="form-label">
+              Brand name <span className="required">*</span>
+            </label>
+            <input
+              id="brand"
+              name="brand"
+              type="text"
+              value={form.brand}
+              onChange={handleFieldChange}
+              className="form-input"
+              placeholder="e.g. Old Tom Distillery"
+              required
+            />
+          </div>
 
-        <div className="form-group">
-          <label htmlFor="abv_percent" className="form-label">
-            ABV (%) <span className="required">*</span>
-          </label>
-          <input
-            id="abv_percent"
-            name="abv_percent"
-            type="number"
-            step="0.1"
-            min="0"
-            max="100"
-            value={form.abv_percent}
-            onChange={handleFieldChange}
-            className="form-input form-input--narrow"
-            placeholder="e.g. 45.0"
-            required
-          />
-        </div>
+          <div className="form-group">
+            <label htmlFor="class_type" className="form-label">
+              Class / type <span className="required">*</span>
+            </label>
+            <input
+              id="class_type"
+              name="class_type"
+              type="text"
+              value={form.class_type}
+              onChange={handleFieldChange}
+              className="form-input"
+              placeholder="e.g. Kentucky Straight Bourbon Whiskey"
+              required
+            />
+          </div>
 
-        <div className="form-group">
-          <label htmlFor="net_contents" className="form-label">
-            Net contents <span className="required">*</span>
-          </label>
-          <input
-            id="net_contents"
-            name="net_contents"
-            type="text"
-            value={form.net_contents}
-            onChange={handleFieldChange}
-            className="form-input"
-            placeholder="e.g. 750 mL"
-            required
-          />
-        </div>
+          <div className="form-group">
+            <label htmlFor="abv_percent" className="form-label">
+              ABV (%) <span className="required">*</span>
+            </label>
+            <input
+              id="abv_percent"
+              name="abv_percent"
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              value={form.abv_percent}
+              onChange={handleFieldChange}
+              className="form-input form-input--narrow"
+              placeholder="e.g. 45.0"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="net_contents" className="form-label">
+              Net contents <span className="required">*</span>
+            </label>
+            <input
+              id="net_contents"
+              name="net_contents"
+              type="text"
+              value={form.net_contents}
+              onChange={handleFieldChange}
+              className="form-input"
+              placeholder="e.g. 750 mL"
+              required
+            />
+          </div>
+        </fieldset>
 
         <div className="form-actions">
           <button

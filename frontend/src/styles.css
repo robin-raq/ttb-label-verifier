@@ -591,3 +591,134 @@ body {
     width: 100%;
   }
 }
+
+/* ---- Application queue (mock COLA) ---- */
+
+.queue-table-wrap {
+  overflow-x: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.queue-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.queue-table th,
+.queue-table td {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.queue-table th {
+  background: #f3f4f6;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.queue-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.queue-table tbody tr:hover {
+  background: #fafafa;
+}
+
+.queue-table__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.queue-table__numeric {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.queue-table__muted {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.queue-table__action-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.queue-footnote {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #f3f4f6;
+  border-left: 3px solid var(--color-text-muted);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.queue-footnote strong {
+  color: var(--color-text);
+}
+
+/* ---- Prefill banner (when form is loaded from queue) ---- */
+.prefill-banner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  background: #eff6ff;
+  border-left: 3px solid #2563eb;
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+/* ---- Form fieldset (groups the application data fields) ---- */
+.form-fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: var(--color-surface);
+}
+
+.form-fieldset__legend {
+  padding: 0 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.form-fieldset__legend-aux {
+  margin-left: 0.5rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+/* ---- Small primary button variant (used in queue rows) ---- */
+.btn--small {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.9rem;
+}
+
+/* ---- Visually-hidden (a11y) ---- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

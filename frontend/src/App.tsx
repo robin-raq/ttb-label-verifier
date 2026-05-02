@@ -1,16 +1,37 @@
 /**
  * App — top-level component.
- * Two screens switched by simple state (no router needed per spec).
+ *
+ * Three screens, switched by simple state (no router needed):
+ *   • queue  — Mock COLA application queue (default). Click an item to
+ *              review it; the form auto-populates and the label image is
+ *              auto-attached. Mirrors how a real TTB agent works.
+ *   • single — Manual single-label verification (upload + type-or-paste fields).
+ *   • batch  — Multi-label upload.
  */
 
 import { useState } from "react";
+import { ApplicationQueue } from "./components/ApplicationQueue";
 import { BatchUpload } from "./components/BatchUpload";
 import { SingleLabelForm } from "./components/SingleLabelForm";
+import type { MockApplication } from "./data/mockApplications";
 
-type Screen = "single" | "batch";
+type Screen = "queue" | "single" | "batch";
 
 export function App() {
-  const [screen, setScreen] = useState<Screen>("single");
+  const [screen, setScreen] = useState<Screen>("queue");
+  const [reviewing, setReviewing] = useState<MockApplication | null>(null);
+
+  function handleReview(app: MockApplication) {
+    setReviewing(app);
+    setScreen("single");
+  }
+
+  function selectScreen(next: Screen) {
+    if (next !== "single") {
+      setReviewing(null);
+    }
+    setScreen(next);
+  }
 
   return (
     <div className="app">
@@ -26,8 +47,16 @@ export function App() {
       <nav className="tab-nav" role="navigation" aria-label="Screens">
         <button
           type="button"
+          className={`tab-nav__tab${screen === "queue" ? " tab-nav__tab--active" : ""}`}
+          onClick={() => selectScreen("queue")}
+          aria-current={screen === "queue" ? "page" : undefined}
+        >
+          Queue
+        </button>
+        <button
+          type="button"
           className={`tab-nav__tab${screen === "single" ? " tab-nav__tab--active" : ""}`}
-          onClick={() => setScreen("single")}
+          onClick={() => selectScreen("single")}
           aria-current={screen === "single" ? "page" : undefined}
         >
           Single Label
@@ -35,7 +64,7 @@ export function App() {
         <button
           type="button"
           className={`tab-nav__tab${screen === "batch" ? " tab-nav__tab--active" : ""}`}
-          onClick={() => setScreen("batch")}
+          onClick={() => selectScreen("batch")}
           aria-current={screen === "batch" ? "page" : undefined}
         >
           Batch (up to 300)
@@ -43,7 +72,9 @@ export function App() {
       </nav>
 
       <main className="app-main">
-        {screen === "single" ? <SingleLabelForm /> : <BatchUpload />}
+        {screen === "queue" && <ApplicationQueue onReview={handleReview} />}
+        {screen === "single" && <SingleLabelForm prefill={reviewing} />}
+        {screen === "batch" && <BatchUpload />}
       </main>
 
       <footer className="app-footer">
