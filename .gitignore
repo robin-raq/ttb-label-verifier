@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Test / coverage / typing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# Audit log volume (FR-013)
+/data/
+*.jsonl
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Personal planning / discovery docs (per user directive — never committed)
+PRESEARCH.md
+SPEC.md
+STUDY_GUIDE.md
+ROADMAP.md
+Presearch-checklist.pdf
+Take-Home Project*.docx
+Take-Home Project*.pdf
+Screenshot*.png
