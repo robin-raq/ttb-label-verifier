@@ -52,3 +52,6 @@ Presearch-checklist.pdf
 Take-Home Project*.docx
 Take-Home Project*.pdf
 Screenshot*.png
+
+# Agent SDK worktrees (created by isolated parallel agents in Phase B)
+.claude/
