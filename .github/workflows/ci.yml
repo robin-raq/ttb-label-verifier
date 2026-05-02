@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+
+jobs:
+  test:
+    name: Python tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies (including dev extras)
+        run: pip install -e ".[dev]"
+
+      - name: Check for leaked secrets (NFR-002)
+        # Exits 1 if any OpenAI-style key is found in tracked paths.
+        # Excludes test fixtures and .env.example which may contain placeholders.
+        run: |
+          if git grep -E "sk-[A-Za-z0-9]{20,}" -- \
+              ':(exclude)tests/fixtures/' \
+              ':(exclude).env.example'; then
+            echo "ERROR: Potential secret found in tracked files"
+            exit 1
+          fi
+
+      - name: Run pytest suites
+        # LLM smoke tier (tests/llm/) is gated by RUN_LLM_TESTS=1 — not run in CI.
+        # Some test directories may not exist yet during parallel agent work;
+        # pytest exits 0 on "no tests collected" per directory.
+        env:
+          # Ensures no accidental real OpenAI calls — comparators are mocked.
+          OPENAI_API_KEY: "sk-test-placeholder-for-ci"
+        run: |
+          pytest -q \
+            tests/test_smoke.py \
+            tests/comparators \
+            tests/test_verdict.py \
+            tests/api \
+            tests/contract \
+            tests/adversarial \
+            tests/performance
+
+  frontend-build:
+    name: Frontend build check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript type-check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build frontend bundle
+        working-directory: frontend
+        env:
+          VITE_API_URL: "http://localhost:8000"
+        run: npm run build
