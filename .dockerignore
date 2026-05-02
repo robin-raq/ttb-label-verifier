@@ -1,4 +1,6 @@
-frontend/
+# Note: frontend/ IS NOT excluded — Dockerfile builds it in stage 1 and
+# copies dist/ into the runtime image. Only frontend's build-time waste
+# (node_modules / dist) is excluded below.
 tests/
 .git/
 .venv/
@@ -7,10 +9,15 @@ __pycache__/
 **/__pycache__/
 *.pyc
 *.pyo
+# Markdown excluded EXCEPT README.md — pyproject.toml references it as
+# the package readme so pip install needs it.
 *.md
+!README.md
 .github/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
-dist/
 *.egg-info/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
