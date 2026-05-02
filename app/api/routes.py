@@ -115,161 +115,36 @@ def _run_comparators(
 ) -> list[FieldResult]:
     """Call all comparators and return the 7 FieldResult list.
 
-    Prefers B1's real comparators when available. Falls back to inline
-    stub comparators that implement the core SPEC rules so that API-layer
-    tests exercise correct PASS/FAIL/NEEDS_REVIEW behaviour even before
-    B1 is merged.
+    Order matches SPEC §7.5 expectation:
+    brand, class_type, abv, net_contents, warning_text, warning_caps, warning_bold.
     """
-    try:
-        from app.comparators.text_match import compare_brand, compare_class_type
-        from app.comparators.numeric_match import compare_abv
-        from app.comparators.volume_match import compare_volume
-        from app.comparators.warning_match import compare_warning
+    from app.comparators.numeric_match import compare_abv
+    from app.comparators.text_match import compare_brand, compare_class_type
+    from app.comparators.volume_match import compare_volume
+    from app.comparators.warning_match import compare_warning
 
-        brand_result = compare_brand(
+    return [
+        compare_brand(
             extraction.brand_name,
             request.brand,
             extraction.field_confidence.brand_name,
-        )
-        class_type_result = compare_class_type(
+        ),
+        compare_class_type(
             extraction.class_type,
             request.class_type,
             extraction.field_confidence.class_type,
-        )
-        abv_result = compare_abv(
+        ),
+        compare_abv(
             extraction.abv_percent,
             request.abv_percent,
             extraction.field_confidence.abv_percent,
-        )
-        volume_result = compare_volume(
+        ),
+        compare_volume(
             extraction.net_contents,
             request.net_contents,
             extraction.field_confidence.net_contents,
-        )
-        warning_results = compare_warning(extraction)
-
-        return [brand_result, class_type_result, abv_result, volume_result, *warning_results]
-
-    except ImportError:
-        return _stub_comparators(request, extraction)
-
-
-def _stub_comparators(
-    request: VerifyRequest,
-    extraction: LabelExtraction,
-) -> list[FieldResult]:
-    """Inline stub comparators — active only while B1 is not merged.
-
-    Implements the minimum SPEC rules so API-integration tests can assert
-    correct PASS / FAIL / NEEDS_REVIEW outcomes:
-      - Brand: confidence gate (≥0.80) + case-insensitive fuzzy match
-      - Class type: case-insensitive substring
-      - ABV: ±0.1% tolerance
-      - Net contents: simple normalization equality
-      - Warning: canonical string comparison
-      - Warning caps: bool check with confidence gate
-      - Warning bold: bool check with confidence gate (≥0.95)
-
-    Note: these stubs do NOT implement all SPEC rules (e.g. full NFKC
-    normalization, rapidfuzz threshold). Replace with B1 comparators for
-    production correctness.
-    """
-    from app.constants.ttb_warning import CANONICAL_WARNING
-    import unicodedata
-    import re as _re
-
-    CONF_THRESHOLD_GENERAL = 0.80
-    CONF_THRESHOLD_WARNING = 0.95
-    ABV_TOLERANCE = 0.1
-
-    def _normalize_text(s: str) -> str:
-        s = unicodedata.normalize("NFKC", s)
-        s = s.casefold()
-        s = _re.sub(r"['’‘]", "'", s)
-        s = _re.sub(r"\s+", " ", s).strip()
-        return s
-
-    def _normalize_warning(s: str) -> str:
-        return _re.sub(r"\s+", " ", s).strip()
-
-    # Brand
-    brand_conf = extraction.field_confidence.brand_name
-    if brand_conf < CONF_THRESHOLD_GENERAL:
-        brand_verdict = Verdict.NEEDS_REVIEW
-    else:
-        # Simple case-insensitive + apostrophe-normalized fuzzy approximation
-        try:
-            from rapidfuzz.fuzz import ratio as _ratio
-            score = _ratio(_normalize_text(extraction.brand_name), _normalize_text(request.brand)) / 100.0
-            if score >= 0.92:
-                brand_verdict = Verdict.PASS
-            else:
-                brand_verdict = Verdict.FAIL
-        except ImportError:
-            n_extracted = _normalize_text(extraction.brand_name)
-            n_expected = _normalize_text(request.brand)
-            brand_verdict = Verdict.PASS if n_extracted == n_expected else Verdict.NEEDS_REVIEW
-
-    # Class type — form substring in label (SPEC §5.2)
-    class_conf = extraction.field_confidence.class_type
-    if class_conf < CONF_THRESHOLD_GENERAL:
-        class_verdict = Verdict.NEEDS_REVIEW
-    else:
-        n_label = _normalize_text(extraction.class_type)
-        n_form = _normalize_text(request.class_type)
-        class_verdict = Verdict.PASS if n_form in n_label else Verdict.FAIL
-
-    # ABV — ±0.1%
-    abv_conf = extraction.field_confidence.abv_percent
-    if abv_conf < CONF_THRESHOLD_GENERAL:
-        abv_verdict = Verdict.NEEDS_REVIEW
-    elif extraction.abv_percent is None:
-        abv_verdict = Verdict.NEEDS_REVIEW
-    elif abs(extraction.abv_percent - request.abv_percent) <= ABV_TOLERANCE:
-        abv_verdict = Verdict.PASS
-    else:
-        abv_verdict = Verdict.FAIL
-
-    # Net contents — simple normalized equality (B1 does full unit conversion)
-    nc_conf = extraction.field_confidence.net_contents
-    if nc_conf < CONF_THRESHOLD_GENERAL:
-        net_verdict = Verdict.NEEDS_REVIEW
-    else:
-        n_label = _normalize_text(extraction.net_contents)
-        n_form = _normalize_text(request.net_contents)
-        net_verdict = Verdict.PASS if n_label == n_form else Verdict.NEEDS_REVIEW
-
-    # Warning text
-    w_conf = extraction.field_confidence.warning_text
-    if w_conf < CONF_THRESHOLD_WARNING:
-        warning_verdict = Verdict.NEEDS_REVIEW
-    else:
-        canonical = _normalize_warning(CANONICAL_WARNING)
-        extracted = _normalize_warning(extraction.warning_text)
-        warning_verdict = Verdict.PASS if extracted == canonical else Verdict.FAIL
-
-    # Warning caps (prefix ALL CAPS)
-    caps_conf = extraction.field_confidence.warning_prefix_all_caps
-    if caps_conf < CONF_THRESHOLD_WARNING:
-        caps_verdict = Verdict.NEEDS_REVIEW
-    else:
-        caps_verdict = Verdict.PASS if extraction.warning_prefix_all_caps else Verdict.FAIL
-
-    # Warning bold (prefix bold)
-    bold_conf = extraction.field_confidence.warning_prefix_bold
-    if bold_conf < CONF_THRESHOLD_WARNING:
-        bold_verdict = Verdict.NEEDS_REVIEW
-    else:
-        bold_verdict = Verdict.PASS if extraction.warning_prefix_bold else Verdict.FAIL
-
-    return [
-        FieldResult(name="brand", verdict=brand_verdict, confidence=brand_conf),
-        FieldResult(name="class_type", verdict=class_verdict, confidence=class_conf),
-        FieldResult(name="abv", verdict=abv_verdict, confidence=abv_conf),
-        FieldResult(name="net_contents", verdict=net_verdict, confidence=nc_conf),
-        FieldResult(name="warning_text", verdict=warning_verdict, confidence=w_conf),
-        FieldResult(name="warning_caps", verdict=caps_verdict, confidence=caps_conf),
-        FieldResult(name="warning_bold", verdict=bold_verdict, confidence=bold_conf),
+        ),
+        *compare_warning(extraction),
     ]
 
 

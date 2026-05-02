@@ -15,20 +15,25 @@ from fastapi import Depends
 
 
 def get_openai_client():
-    """Provide the OpenAI vision client (real implementation from B3).
+    """Provide the OpenAI vision client.
 
     In tests, this is overridden via app.dependency_overrides to inject
     FakeOpenAIClient without touching app/extraction/.
 
-    Returns None if B3's module is not yet available. Routes handle None
-    gracefully by returning NEEDS_REVIEW (same path as FR-012 failure).
+    Returns None if construction fails for any reason — most commonly the
+    OPENAI_API_KEY env var is unset (e.g. local dev / CI without secrets,
+    or batch-validation tests that never reach the LLM call). Routes handle
+    None gracefully by returning NEEDS_REVIEW (same path as FR-012 failure).
     """
-    # Late import so tests that don't need extraction can still run even
-    # if app/extraction/openai_vision.py doesn't exist yet (B3's territory).
     try:
         from app.extraction.openai_vision import OpenAIVisionClient
-        return OpenAIVisionClient()
     except ImportError:
+        return None
+    if not os.getenv("OPENAI_API_KEY"):
+        return None
+    try:
+        return OpenAIVisionClient()
+    except Exception:
         return None
 
 
