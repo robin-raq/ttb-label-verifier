@@ -1,66 +1,17 @@
-# =========================================================
-# Railway deployment configuration
-# Two services:
-#   1. backend  — Python/FastAPI via Dockerfile
-#   2. frontend — static Vite build
-# =========================================================
+# Railway deployment — single service.
+# Backend serves both the FastAPI API (POST /verify, /health) and the
+# pre-built React frontend (mounted at /). One URL, no CORS dance.
+#
+# Environment variables are set via `railway variables --set KEY=VAL` or
+# the Railway dashboard. OPENAI_API_KEY is the only required secret.
 
-[project]
-name = "ttb-label-verifier"
-
-# ---- Backend service ----
-[[services]]
-name = "backend"
-
-[services.build]
-# Build from the Dockerfile at repo root
+[build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
-[services.deploy]
+[deploy]
 startCommand = "uvicorn app.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"
 healthcheckPath = "/health"
-healthcheckTimeout = 10
-restartPolicyType = "on-failure"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
-
-[services.variables]
-# Required secrets — set actual values in Railway dashboard, NOT here
-OPENAI_API_KEY = ""
-# Model defaults (override in dashboard for different models)
-MODEL_NAME = "gpt-4o-2024-08-06"
-BATCH_FAST_MODEL = "gpt-4o-mini"
-# CORS — set to your Railway frontend public URL after first deploy
-ALLOWED_ORIGINS = ""
-# Audit log on persistent volume
-AUDIT_LOG_PATH = "/data/audit.jsonl"
-LOG_LEVEL = "INFO"
-ENV = "production"
-SECURE_HEADERS_ENABLED = "1"
-PROMPT_VERSION = "v1"
-
-[[services.volumes]]
-mountPath = "/data"
-sizeMB = 1024
-
-# ---- Frontend service ----
-[[services]]
-name = "frontend"
-
-[services.build]
-builder = "nixpacks"
-buildCommand = "npm ci && npm run build"
-watchPatterns = ["frontend/**"]
-
-[services.source]
-# Build from the frontend/ subdirectory
-rootDirectory = "frontend"
-
-[services.deploy]
-# Serve the static dist output
-staticDir = "dist"
-
-[services.variables]
-# Set to the Railway public URL of the backend service after first deploy
-# e.g. https://backend-production-xxxx.up.railway.app
-VITE_API_URL = ""

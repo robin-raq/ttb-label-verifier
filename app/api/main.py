@@ -10,9 +10,12 @@ Import `app` from here in tests and ASGI servers.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -72,3 +75,37 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 app.include_router(router)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Liveness probe for Railway / Docker healthcheck."""
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Static frontend (mounted only when frontend/dist/ exists in the container).
+# In local dev the React app is served by Vite on port 5173; in production the
+# Dockerfile builds the frontend and copies dist/ into /app/frontend_dist/.
+# ---------------------------------------------------------------------------
+
+_FRONTEND_DIST = Path(os.environ.get("FRONTEND_DIST_DIR", "/app/frontend_dist"))
+if _FRONTEND_DIST.is_dir():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=_FRONTEND_DIST / "assets"),
+        name="frontend-assets",
+    )
+
+    @app.get("/")
+    def _index() -> FileResponse:
+        return FileResponse(_FRONTEND_DIST / "index.html")
+
+    @app.get("/{full_path:path}")
+    def _spa_fallback(full_path: str) -> FileResponse:
+        # SPA fallback — any unmatched route returns the index, except /verify*
+        # and /health which the API router and FastAPI itself already own.
+        candidate = _FRONTEND_DIST / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_FRONTEND_DIST / "index.html")

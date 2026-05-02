@@ -1,50 +1,52 @@
 # =========================================================
-# TTB Label Verifier — Backend Dockerfile
-# Multi-stage build: install deps → lean runtime image
+# TTB Label Verifier — single-service Dockerfile
+# Three stages:
+#   1. frontend-build  — Node 20, builds Vite/React → dist/
+#   2. python-build    — Python 3.12, installs deps to /install prefix
+#   3. runtime         — slim image, non-root, copies both
+# Single container so the deploy URL serves both UI and API.
 # =========================================================
 
-# ---- Stage 1: build ----
-FROM python:3.12-slim AS build
+# ---- Stage 1: frontend build ----
+FROM node:20-alpine AS frontend-build
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+# In production the React app calls the API on the same origin, so VITE_API_URL
+# is set to empty string ('' resolves to relative URLs against location.origin).
+ENV VITE_API_URL=""
+RUN npm run build
 
+# ---- Stage 2: python build ----
+FROM python:3.12-slim AS python-build
 WORKDIR /build
-
-# Install build toolchain (needed for some C-extension deps)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy only what pip needs to install the package
 COPY pyproject.toml ./
 COPY README.md ./
 COPY app/ ./app/
-
-# Install production deps (not editable) into a prefix we can copy
 RUN pip install --no-cache-dir --prefix=/install .
 
-# ---- Stage 2: runtime ----
+# ---- Stage 3: runtime ----
 FROM python:3.12-slim AS runtime
-
-# Non-root user for security
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-
 WORKDIR /app
 
-# Copy installed packages from build stage
-COPY --from=build /install /usr/local
+# Python deps
+COPY --from=python-build /install /usr/local
+# App source
+COPY --from=python-build /build/app ./app
+# Frontend static bundle (FastAPI serves this from /app/frontend_dist/)
+COPY --from=frontend-build /web/dist ./frontend_dist
 
-# Copy application source
-COPY --from=build /build/app ./app
-
-# Audit log volume mount point (Railway mounts persistent disk here)
+# Audit log persistent volume mount point
 VOLUME ["/data"]
 
-# Expose default port; Railway overrides via $PORT
 EXPOSE 8000
-
-# Switch to non-root
 USER appuser
 
-# Healthcheck — Railway uses this to verify the service is up
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8000}/health')" || exit 1
 
