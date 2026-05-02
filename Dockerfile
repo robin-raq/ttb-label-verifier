@@ -41,8 +41,10 @@ COPY --from=python-build /build/app ./app
 # Frontend static bundle (FastAPI serves this from /app/frontend_dist/)
 COPY --from=frontend-build /web/dist ./frontend_dist
 
-# Audit log persistent volume mount point
-VOLUME ["/data"]
+# Audit log directory (ephemeral on Railway free tier; promoted to a Railway
+# volume in production via dashboard — captured in ROADMAP.md). Owned by
+# appuser so the FastAPI process can append.
+RUN mkdir -p /data && chown appuser:appgroup /data
 
 EXPOSE 8000
 USER appuser
