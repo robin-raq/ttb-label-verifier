@@ -102,7 +102,11 @@ def _render_label(
     title_font = _load_font(56, bold=True)
     subtitle_font = _load_font(34)
     field_font = _load_font(28)
-    warn_prefix_font = _load_font(22, bold=warning_prefix_bold)
+    # Prefix and body share the same point size so the inline composite reads
+    # like a single sentence. Real TTB-approved labels render the prefix
+    # inline + bold + caps; the synthetic renderer mirrors that — see comment
+    # in `tests/fixtures/labels/README.md`.
+    warn_prefix_font = _load_font(18, bold=warning_prefix_bold)
     warn_body_font = _load_font(18)
 
     y = 70
@@ -135,18 +139,49 @@ def _render_label(
     draw.line([(120, y), (W - 120, y)], fill=BORDER, width=2)
     y += 40
 
-    # Government Warning — split prefix and body so we can render the prefix
-    # in (optionally) bold + ALL CAPS independently.
+    # Government Warning — render the prefix INLINE with the first
+    # wrapped line of body text, matching real TTB-approved labels.
+    # The prefix is bold (when warning_prefix_bold) and caps (when
+    # warning_prefix_caps); body wraps in regular weight after it.
     PREFIX = "GOVERNMENT WARNING:"
     body_text = warning.removeprefix(PREFIX).lstrip()
     rendered_prefix = PREFIX if warning_prefix_caps else "Government Warning:"
 
-    # Prefix on its own line, indented from left edge
-    draw.text((80, y), rendered_prefix, fill=FG, font=warn_prefix_font)
-    y += 32
+    max_w = W - 160
+    prefix_w = warn_prefix_font.getbbox(rendered_prefix)[2]
+    gap_w = warn_body_font.getbbox(" ")[2]
 
-    # Body wrapped to label width
-    for line in _wrap(body_text, warn_body_font, W - 160):
+    # Wrap body so the FIRST line fits in (max_w - prefix_w - gap),
+    # subsequent lines fit in the full max_w.
+    words = body_text.split()
+    lines: list[str] = []
+    cur = ""
+    cur_max = max_w - prefix_w - gap_w
+    for w in words:
+        candidate = (cur + " " + w).strip()
+        if warn_body_font.getbbox(candidate)[2] <= cur_max:
+            cur = candidate
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w
+            cur_max = max_w  # full width for lines 2+
+    if cur:
+        lines.append(cur)
+
+    # First line: bold prefix + body fragment, on the same baseline.
+    draw.text((80, y), rendered_prefix, fill=FG, font=warn_prefix_font)
+    if lines:
+        draw.text(
+            (80 + prefix_w + gap_w, y),
+            lines[0],
+            fill=FG,
+            font=warn_body_font,
+        )
+    y += 22
+
+    # Subsequent body lines, plain weight, full label width.
+    for line in lines[1:]:
         draw.text((80, y), line, fill=FG, font=warn_body_font)
         y += 22
 
