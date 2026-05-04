@@ -32,7 +32,11 @@ def get_vision_client() -> VisionClient | None:
     new provider, drop a `<Name>VisionClient` class into `app/extraction/`
     that satisfies the `VisionClient` Protocol and add a branch here.
     """
-    provider = os.getenv("VISION_PROVIDER", "openai").lower()
+    # Strip + lowercase + fall back to default if blank. Trailing whitespace
+    # in shell exports / .env files / Railway dashboard values otherwise
+    # silently breaks every request with an unhandled ValueError; an empty
+    # string (env var set but unset to nothing) lands in the same trap.
+    provider = (os.getenv("VISION_PROVIDER") or "").strip().lower() or "openai"
 
     if provider == "openai":
         try:
