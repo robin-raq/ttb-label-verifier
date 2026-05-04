@@ -68,6 +68,22 @@ This prototype mechanizes the cross-reference. One OpenAI multimodal call extrac
 
 ---
 
+## Deployment constraints
+
+The v1 prototype on Railway calls **public OpenAI** server-side. That's fine for a demo URL hit from a reviewer's laptop, but TTB's internal network is known (per Marcus's discovery interview) to firewall most third-party ML endpoints — a prior scanning-vendor pilot shipped half-broken because outbound connections to the vendor's inference endpoints were blocked.
+
+**Production rollout inside TTB needs a different vision provider, not a different app.** The pluggable seam is already in code:
+
+- `app/extraction/__init__.py` defines a `VisionClient` Protocol — `async extract(image_bytes, prompt_version) -> LabelExtraction`.
+- `app/extraction/openai_vision.py:OpenAIVisionClient` is the v1 implementation.
+- `app/api/deps.py:get_vision_client` selects the implementation via the `VISION_PROVIDER` env var (default `openai`; `azure` is reserved and raises a clear `NotImplementedError` pointing at the swap location).
+
+To run inside TTB's gov-cloud tenant, drop an `AzureOpenAIVisionClient` next to the OpenAI one, add a branch in `get_vision_client`, and set `VISION_PROVIDER=azure` plus the Azure-specific env vars. **No changes to routes, comparators, audit logging, or tests.** A protocol-conformance test (`tests/extraction/test_protocol.py`) fails fast if a new client diverges from the contract.
+
+This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini) would not solve the firewall problem — both public APIs face the same egress wall. The right answer is in-network deployment via Azure OpenAI, which is `ROADMAP.md → Integration` v2 work.
+
+---
+
 ## Key design decisions
 
 ### 1. Verification, not extraction — the form fields are the application data, not duplicate entry
