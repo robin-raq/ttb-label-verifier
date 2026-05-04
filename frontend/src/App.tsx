@@ -6,29 +6,41 @@
  *              review it; the form auto-populates and the label image is
  *              auto-attached. Mirrors how a real TTB agent works.
  *   • single — Manual single-label verification (upload + type-or-paste fields).
- *   • batch  — Multi-label upload.
+ *   • batch  — Multi-label upload via ZIP + manifest.csv.
+ *
+ * The queue can also auto-route to the batch screen with a pre-staged ZIP
+ * URL — used by MOCK_BATCHES for the bulk-review demo path.
  */
 
 import { useState } from "react";
 import { ApplicationQueue } from "./components/ApplicationQueue";
 import { BatchUpload } from "./components/BatchUpload";
 import { SingleLabelForm } from "./components/SingleLabelForm";
-import type { MockApplication } from "./data/mockApplications";
+import type { MockApplication, MockBatch } from "./data/mockApplications";
 
 type Screen = "queue" | "single" | "batch";
 
 export function App() {
   const [screen, setScreen] = useState<Screen>("queue");
   const [reviewing, setReviewing] = useState<MockApplication | null>(null);
+  const [prefillBatchUrl, setPrefillBatchUrl] = useState<string | null>(null);
 
   function handleReview(app: MockApplication) {
     setReviewing(app);
     setScreen("single");
   }
 
+  function handleReviewBatch(batch: MockBatch) {
+    setPrefillBatchUrl(batch.zip_url);
+    setScreen("batch");
+  }
+
   function selectScreen(next: Screen) {
     if (next !== "single") {
       setReviewing(null);
+    }
+    if (next !== "batch") {
+      setPrefillBatchUrl(null);
     }
     setScreen(next);
   }
@@ -72,9 +84,14 @@ export function App() {
       </nav>
 
       <main className="app-main">
-        {screen === "queue" && <ApplicationQueue onReview={handleReview} />}
+        {screen === "queue" && (
+          <ApplicationQueue
+            onReview={handleReview}
+            onReviewBatch={handleReviewBatch}
+          />
+        )}
         {screen === "single" && <SingleLabelForm prefill={reviewing} />}
-        {screen === "batch" && <BatchUpload />}
+        {screen === "batch" && <BatchUpload prefillZipUrl={prefillBatchUrl} />}
       </main>
 
       <footer className="app-footer">

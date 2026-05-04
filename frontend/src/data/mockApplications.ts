@@ -7,8 +7,16 @@
  * and a label image attachment URL. The agent picks one from the queue,
  * the form auto-populates, and verification proceeds — no typing.
  *
- * To extend this list: drop a new label PNG into `frontend/public/sample-labels/`
- * and add an entry below.
+ * Two record types live here:
+ *   • MockApplication — a single application reviewed in the Single tab.
+ *   • MockBatch       — a pre-staged ZIP that opens in the Batch tab so an
+ *                       agent can see the bulk-review UX without authoring
+ *                       a manifest.csv first. Maps to scripts/build_sample_batch_zip.py.
+ *
+ * To extend the single list: drop a label PNG into `frontend/public/sample-labels/`
+ * and add an entry to MOCK_APPLICATIONS.
+ *
+ * To rebuild the batch ZIP: run `python scripts/build_sample_batch_zip.py`.
  */
 
 import type { VerifyRequest } from "../api/types";
@@ -24,6 +32,21 @@ export interface MockApplication {
   label_image_url: string;
   // Brief note explaining what this fixture exercises (visible in the queue):
   scenario_hint: string;
+}
+
+export interface MockBatch {
+  /** Synthetic batch ID — distinct from per-application COLA IDs. */
+  batch_id: string;
+  /** Short label shown in the queue row, e.g. "Peak-season backlog (5 apps)". */
+  title: string;
+  /** Why this batch exists in the queue — one line. */
+  description: string;
+  /** Path (relative to site root) of the pre-built ZIP. */
+  zip_url: string;
+  /** Number of applications inside the manifest, for the row's metadata. */
+  item_count: number;
+  /** Human-readable relative submission time. */
+  submitted: string;
 }
 
 export const MOCK_APPLICATIONS: MockApplication[] = [
@@ -171,5 +194,17 @@ export const MOCK_APPLICATIONS: MockApplication[] = [
     label_image_url: "/sample-labels/adv_03_missing_warning.png",
     scenario_hint:
       "No federal Government Warning on the label — most consequential failure mode",
+  },
+];
+
+export const MOCK_BATCHES: MockBatch[] = [
+  {
+    batch_id: "BATCH-2026-PEAK-01",
+    title: "Peak-season backlog (5 applications)",
+    description:
+      "Mixed beer / wine / spirits across 5 different applicants. Demonstrates the bulk-review path — ZIP + manifest.csv with one row per application.",
+    zip_url: "/sample-batches/peak-season.zip",
+    item_count: 5,
+    submitted: "this morning",
   },
 ];
