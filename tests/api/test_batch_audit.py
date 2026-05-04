@@ -78,10 +78,37 @@ def _records(audit_file) -> list[dict]:
     return [json.loads(line) for line in audit_file.read_text().splitlines() if line.strip()]
 
 
+_REQUIRED_AUDIT_KEYS = {
+    "ts",
+    "request_id",
+    "batch_id",
+    "image_sha256",
+    "model_id",
+    "prompt_version",
+    "form_fields",
+    "extracted",
+    "field_results",
+    "overall_verdict",
+    "latency_ms",
+}
+
+
 def test_batch_audit_one_record_per_item(batch_audit_client):
     client, audit_file = batch_audit_client
     _post_batch(client, 3)
     assert len(_records(audit_file)) == 3
+
+
+def test_batch_audit_record_has_required_keys(batch_audit_client):
+    """SPEC §2.1 keys MUST be present on batch records too — closes the
+    coverage gap where `test_audit_written.py` only asserted the single-
+    verify path. A future change that drops e.g. `latency_ms` from batch
+    records would have been silently undetected."""
+    client, audit_file = batch_audit_client
+    _post_batch(client, 2)
+    for record in _records(audit_file):
+        missing = _REQUIRED_AUDIT_KEYS - set(record.keys())
+        assert not missing, f"Batch audit record missing keys: {missing}"
 
 
 def test_batch_audit_each_record_has_extraction(batch_audit_client):
