@@ -737,6 +737,38 @@ body {
   flex: 0 0 auto;
 }
 
+/* ---- Upload previews (Single + Batch) — blob: URLs from createObjectURL ----
+   These rules only affect layout; CSP must still allow img-src blob: in prod. */
+
+.image-preview {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.image-preview__caption {
+  font-size: 0.88rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.image-preview__frame {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  line-height: 0;
+}
+
+.image-preview__img {
+  display: block;
+  width: 100%;
+  max-width: 400px;
+  height: auto;
+}
+
 /* ---- Prefill banner (when form is loaded from queue) ---- */
 .prefill-banner {
   margin: 0 0 1rem;

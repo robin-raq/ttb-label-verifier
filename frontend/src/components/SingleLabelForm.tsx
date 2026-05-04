@@ -67,6 +67,7 @@ interface SingleLabelFormProps {
 export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [form, setForm] = useState<FormValues>(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerifyResponse | null>(null);
@@ -118,6 +119,19 @@ export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
       cancelled = true;
     };
   }, [prefill]);
+
+  // Local preview (object URL) — revoked on file change / unmount.
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(selectedFile);
+    setPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [selectedFile]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
@@ -194,7 +208,12 @@ export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
         </div>
       )}
 
-      <form className="verify-form" onSubmit={handleSubmit} noValidate>
+      <form
+        className="verify-form"
+        onSubmit={handleSubmit}
+        noValidate
+        aria-busy={loading}
+      >
         <div className="form-group">
           <label htmlFor="single-image" className="form-label">
             Label image <span className="required">*</span>
@@ -216,6 +235,20 @@ export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
             <span className="form-hint form-hint--selected">
               Selected: {DOMPurify.sanitize(selectedFile.name)}
             </span>
+          )}
+          {previewUrl && selectedFile && (
+            <figure className="image-preview" aria-label="Uploaded label preview">
+              <figcaption className="image-preview__caption">
+                Confirm this matches the application before verifying.
+              </figcaption>
+              <div className="image-preview__frame">
+                <img
+                  src={previewUrl}
+                  alt={`Preview of label image: ${selectedFile.name}`}
+                  className="image-preview__img"
+                />
+              </div>
+            </figure>
           )}
         </div>
 
