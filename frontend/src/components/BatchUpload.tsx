@@ -1,42 +1,36 @@
 /**
  * BatchUpload — Screen 2.
  *
- * Allows uploading up to 300 label images plus shared form values.
- * Submits POST /verify/batch (JSON body with base64 images) and streams
- * results via SSE using @microsoft/fetch-event-source.
+ * One source: a ZIP package containing manifest.csv plus the label images
+ * referenced by each row. One row = one COLA-style application (its own
+ * brand, class/type, ABV, net contents). Submits POST /verify/batch (JSON +
+ * base64) and streams results via SSE (@microsoft/fetch-event-source).
  *
- * SECURITY: All API-supplied text passes through DOMPurify.sanitize()
- * before rendering. JSX interpolation only — no innerHTML.
+ * Why one source: a TTB compliance batch is N *different* applications.
+ * A "shared form" mode (one set of fields applied to N images) doesn't
+ * model the actual job — see STUDY_GUIDE.md and the original feedback
+ * round that removed it.
+ *
+ * SECURITY: API-supplied text passes through DOMPurify before rendering.
  */
 
 import DOMPurify from "dompurify";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { fileToBase64, verifyBatch } from "../api/client";
-import type {
-  BatchItemEvent,
-  Verdict,
-  VerifyRequest,
-} from "../api/types";
+import type { BatchItemEvent, Verdict } from "../api/types";
+import {
+  BATCH_MANIFEST_MAX_ITEMS,
+  ManifestParseError,
+  parseBatchZip,
+  type PreparedBatchItem,
+} from "../utils/batchManifest";
 
-const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp";
-const MAX_BATCH_SIZE = 300;
-
-interface FormValues {
-  brand: string;
-  class_type: string;
-  abv_percent: string;
-  net_contents: string;
-}
-
-const EMPTY_FORM: FormValues = {
-  brand: "",
-  class_type: "",
-  abv_percent: "",
-  net_contents: "",
-};
+const PREVIEW_CAP = 48;
 
 interface BatchRow extends BatchItemEvent {
   fileName: string;
+  /** Brand from this row's manifest entry — differs per application. */
+  rowBrand: string;
 }
 
 function verdictBadgeClass(verdict: Verdict): string {
@@ -62,31 +56,99 @@ function verdictLabel(verdict: Verdict): string {
 }
 
 export function BatchUpload() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [form, setForm] = useState<FormValues>(EMPTY_FORM);
+  const [zipFile, setZipFile] = useState<File | null>(null);
+  const [preparedFromZip, setPreparedFromZip] = useState<PreparedBatchItem[]>(
+    [],
+  );
+  const [zipParseError, setZipParseError] = useState<string | null>(null);
+  const [zipParseHint, setZipParseHint] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  function handleFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    const capped = files.slice(0, MAX_BATCH_SIZE);
-    setSelectedFiles(capped);
+  const previewSourceFiles = useMemo(
+    () => preparedFromZip.map((p) => p.file),
+    [preparedFromZip],
+  );
+
+  const captionLabels = useMemo(
+    () => preparedFromZip.map((p) => p.displayName),
+    [preparedFromZip],
+  );
+
+  const filesForPreviewUi = useMemo(
+    () => previewSourceFiles.slice(0, PREVIEW_CAP),
+    [previewSourceFiles],
+  );
+
+  const captionsForPreview = useMemo(
+    () => captionLabels.slice(0, PREVIEW_CAP),
+    [captionLabels],
+  );
+
+  const previewUrls = useMemo(
+    () => filesForPreviewUi.map((f) => URL.createObjectURL(f)),
+    [filesForPreviewUi],
+  );
+
+  useEffect(() => {
+    return () => {
+      previewUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [previewUrls]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!zipFile) {
+        setPreparedFromZip([]);
+        setZipParseError(null);
+        setZipParseHint(null);
+        return;
+      }
+      setZipParseError(null);
+      setZipParseHint(null);
+      try {
+        const rowsParsed = await parseBatchZip(zipFile);
+        if (cancelled) return;
+        setPreparedFromZip(rowsParsed);
+        setZipParseHint(`${rowsParsed.length} application(s) ready from manifest.csv`);
+      } catch (err) {
+        if (cancelled) return;
+        setPreparedFromZip([]);
+        const msg =
+          err instanceof ManifestParseError
+            ? err.message
+            : "Could not parse the ZIP package.";
+        setZipParseError(msg);
+      }
+    }
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [zipFile]);
+
+  function handleZipPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setZipFile(file);
     setRows([]);
     setProgress(null);
     setError(null);
     setDone(false);
     setExpandedIndex(null);
-  }
-
-  function handleFieldChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -97,54 +159,53 @@ export function BatchUpload() {
     setDone(false);
     setExpandedIndex(null);
 
-    if (selectedFiles.length === 0) {
-      setError("Please select at least one label image.");
+    if (zipParseError) {
+      setError("Fix the ZIP/manifest errors before submitting.");
+      return;
+    }
+    if (preparedFromZip.length === 0) {
+      setError("Choose a ZIP that contains manifest.csv and label images.");
       return;
     }
 
-    const abv = parseFloat(form.abv_percent);
-    if (isNaN(abv)) {
-      setError("ABV must be a valid number.");
+    let items: Array<{
+      image_b64: string;
+      payload: PreparedBatchItem["payload"];
+      fileName: string;
+      rowBrand: string;
+    }>;
+    try {
+      items = await Promise.all(
+        preparedFromZip.map(async (row) => ({
+          image_b64: await fileToBase64(row.file),
+          payload: row.payload,
+          fileName: row.displayName,
+          rowBrand: row.payload.brand,
+        })),
+      );
+    } catch {
+      setError("Failed to read label images from the package.");
       return;
     }
-
-    const sharedPayload: VerifyRequest = {
-      brand: form.brand.trim(),
-      class_type: form.class_type.trim(),
-      abv_percent: abv,
-      net_contents: form.net_contents.trim(),
-    };
 
     setLoading(true);
 
-    // Convert all files to base64 before sending
-    let items: Array<{ image_b64: string; payload: VerifyRequest; fileName: string }>;
-    try {
-      items = await Promise.all(
-        selectedFiles.map(async (file) => ({
-          image_b64: await fileToBase64(file),
-          payload: { ...sharedPayload },
-          fileName: file.name,
-        }))
-      );
-    } catch {
-      setError("Failed to read one or more image files.");
-      setLoading(false);
-      return;
-    }
-
-    const fileNames = items.map((i) => i.fileName);
+    const brandByIndex = items.map((i) => i.rowBrand);
 
     const controller = verifyBatch(
       { items: items.map(({ image_b64, payload }) => ({ image_b64, payload })) },
       {
-        onProgress({ done, total }) {
-          setProgress({ done, total });
+        onProgress({ done: doneN, total }) {
+          setProgress({ done: doneN, total });
         },
         onItem(event) {
           setRows((prev) => [
             ...prev,
-            { ...event, fileName: fileNames[event.index] ?? `Image ${event.index + 1}` },
+            {
+              ...event,
+              fileName: items[event.index]?.fileName ?? `Row ${event.index + 1}`,
+              rowBrand: brandByIndex[event.index] ?? "",
+            },
           ]);
           // Optimistic progress if backend doesn't send progress events
           setProgress((prev) => ({
@@ -161,7 +222,7 @@ export function BatchUpload() {
           setDone(true);
           setLoading(false);
         },
-      }
+      },
     );
 
     abortRef.current = controller;
@@ -175,126 +236,106 @@ export function BatchUpload() {
 
   function handleReset() {
     abortRef.current?.abort();
-    setSelectedFiles([]);
-    setForm(EMPTY_FORM);
+    setZipFile(null);
+    setPreparedFromZip([]);
+    setZipParseError(null);
+    setZipParseHint(null);
     setLoading(false);
     setProgress(null);
     setRows([]);
     setExpandedIndex(null);
     setError(null);
     setDone(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (zipInputRef.current) zipInputRef.current.value = "";
   }
 
   function toggleExpand(index: number) {
     setExpandedIndex((prev) => (prev === index ? null : index));
   }
 
+  const previewOverflow = previewSourceFiles.length > PREVIEW_CAP;
+
   return (
     <section className="screen">
       <h2 className="screen__title">Batch Verification</h2>
       <p className="screen__subtitle">
-        Upload up to {MAX_BATCH_SIZE} label images. The form values below will be applied
-        to all images. Results stream in as each label is processed.
+        Upload a ZIP containing <code className="inline-code">manifest.csv</code>{" "}
+        plus the label images. One row in the manifest = one COLA-style
+        application with its own brand, class/type, ABV, and net contents.
       </p>
 
       <form className="verify-form" onSubmit={handleSubmit} noValidate>
         <div className="form-group">
-          <label htmlFor="batch-images" className="form-label">
-            Label images <span className="required">*</span>
+          <label htmlFor="batch-zip" className="form-label">
+            Application ZIP <span className="required">*</span>
           </label>
           <input
-            id="batch-images"
-            ref={fileInputRef}
+            id="batch-zip"
+            ref={zipInputRef}
             type="file"
-            accept={ACCEPTED_TYPES}
-            multiple
-            onChange={handleFilesChange}
+            accept=".zip,application/zip"
+            onChange={handleZipPick}
             className="form-input form-input--file"
-            aria-describedby="batch-images-hint"
+            aria-describedby="batch-zip-hint"
             required
           />
-          <span id="batch-images-hint" className="form-hint">
-            JPEG, PNG, or WebP — up to {MAX_BATCH_SIZE} files, max 10 MB each
+          <span id="batch-zip-hint" className="form-hint">
+            Must include manifest.csv plus image paths referenced by each row —
+            max {BATCH_MANIFEST_MAX_ITEMS} rows (
+            <a href="#batch-zip-layout" className="form-hint-link">
+              layout ↓
+            </a>
+            )
           </span>
-          {selectedFiles.length > 0 && (
+          {zipFile && (
             <span className="form-hint form-hint--selected">
-              {selectedFiles.length} file{selectedFiles.length !== 1 ? "s" : ""} selected
-              {selectedFiles.length === MAX_BATCH_SIZE && " (limit reached)"}
+              {DOMPurify.sanitize(zipFile.name)}
             </span>
+          )}
+          {zipParseHint && (
+            <div className="alert alert--info" role="status">
+              {DOMPurify.sanitize(zipParseHint)}
+            </div>
+          )}
+          {zipParseError && (
+            <div className="alert alert--error" role="alert">
+              {DOMPurify.sanitize(zipParseError)}
+            </div>
           )}
         </div>
 
-        <fieldset className="form-fieldset">
-          <legend className="form-legend">Apply these form values to all images</legend>
-
-          <div className="form-group">
-            <label htmlFor="batch-brand" className="form-label">
-              Brand name <span className="required">*</span>
-            </label>
-            <input
-              id="batch-brand"
-              name="brand"
-              type="text"
-              value={form.brand}
-              onChange={handleFieldChange}
-              className="form-input"
-              placeholder="e.g. Old Tom Distillery"
-              required
-            />
+        {previewSourceFiles.length > 0 && (
+          <div
+            className="batch-preview-strip"
+            role="group"
+            aria-label="Thumbnail previews before verification"
+          >
+            <p className="batch-preview-strip__intro form-hint">
+              Scroll to visually confirm thumbnails before submitting.
+              {previewOverflow &&
+                ` Showing first ${PREVIEW_CAP} of ${previewSourceFiles.length}.`}
+            </p>
+            <div className="batch-preview-strip__scroll">
+              {filesForPreviewUi.map((file, i) => (
+                <figure
+                  key={`${file.name}-${file.lastModified}-${i}`}
+                  className="batch-preview-thumb"
+                >
+                  <div className="batch-preview-thumb__frame">
+                    <img
+                      src={previewUrls[i]}
+                      alt={`Preview: ${captionsForPreview[i] ?? file.name}`}
+                      className="batch-preview-thumb__img"
+                    />
+                  </div>
+                  <figcaption className="batch-preview-thumb__caption">
+                    {DOMPurify.sanitize(captionsForPreview[i] ?? file.name)}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
           </div>
-
-          <div className="form-group">
-            <label htmlFor="batch-class_type" className="form-label">
-              Class / type <span className="required">*</span>
-            </label>
-            <input
-              id="batch-class_type"
-              name="class_type"
-              type="text"
-              value={form.class_type}
-              onChange={handleFieldChange}
-              className="form-input"
-              placeholder="e.g. Kentucky Straight Bourbon Whiskey"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="batch-abv_percent" className="form-label">
-              ABV (%) <span className="required">*</span>
-            </label>
-            <input
-              id="batch-abv_percent"
-              name="abv_percent"
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={form.abv_percent}
-              onChange={handleFieldChange}
-              className="form-input form-input--narrow"
-              placeholder="e.g. 45.0"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="batch-net_contents" className="form-label">
-              Net contents <span className="required">*</span>
-            </label>
-            <input
-              id="batch-net_contents"
-              name="net_contents"
-              type="text"
-              value={form.net_contents}
-              onChange={handleFieldChange}
-              className="form-input"
-              placeholder="e.g. 750 mL"
-              required
-            />
-          </div>
-        </fieldset>
+        )}
 
         <div className="form-actions">
           {loading ? (
@@ -309,7 +350,7 @@ export function BatchUpload() {
             <button
               type="submit"
               className="btn btn--primary"
-              disabled={loading}
+              disabled={loading || preparedFromZip.length === 0 || !!zipParseError}
             >
               Start Batch Verification
             </button>
@@ -325,6 +366,23 @@ export function BatchUpload() {
         </div>
       </form>
 
+      <div id="batch-zip-layout" className="batch-zip-docs">
+        <h3 className="batch-zip-docs__title">ZIP + manifest.csv layout</h3>
+        <p className="form-hint batch-zip-docs__p">
+          Put <code className="inline-code">manifest.csv</code> in the ZIP (root
+          or any subfolder — the shallowest <code className="inline-code">
+            manifest.csv
+          </code> wins). Columns (header row required):
+          <strong> image_filename</strong>, <strong>brand</strong>,{" "}
+          <strong>class_type</strong>, <strong>abv_percent</strong>,{" "}
+          <strong>net_contents</strong>. Optional:<strong> cola_id</strong> (stored
+          as <code className="inline-code">request_id</code>). Image paths resolve
+          from the ZIP root or relative to the manifest&apos;s folder. Aliases accepted
+          include <code className="inline-code">image_file</code>,{" "}
+          <code className="inline-code">label_image</code>.
+        </p>
+      </div>
+
       {error && (
         <div className="alert alert--error" role="alert">
           {error}
@@ -334,7 +392,8 @@ export function BatchUpload() {
       {(loading || rows.length > 0 || done) && (
         <div className="batch-results">
           {progress && (
-            <div className="progress-bar-container" role="progressbar"
+            <div className="progress-bar-container"
+              role="progressbar"
               aria-valuenow={progress.done}
               aria-valuemin={0}
               aria-valuemax={progress.total}
@@ -347,9 +406,10 @@ export function BatchUpload() {
                 <div
                   className="progress-bar__fill"
                   style={{
-                    width: progress.total > 0
-                      ? `${(progress.done / progress.total) * 100}%`
-                      : "0%",
+                    width:
+                      progress.total > 0
+                        ? `${(progress.done / progress.total) * 100}%`
+                        : "0%",
                   }}
                 />
               </div>
@@ -361,8 +421,8 @@ export function BatchUpload() {
               <thead>
                 <tr>
                   <th scope="col">#</th>
-                  <th scope="col">File</th>
-                  <th scope="col">Brand</th>
+                  <th scope="col">Application / file</th>
+                  <th scope="col">Brand (form)</th>
                   <th scope="col">Verdict</th>
                   <th scope="col">Details</th>
                 </tr>
@@ -370,15 +430,13 @@ export function BatchUpload() {
               <tbody>
                 {rows.map((row) => {
                   const isExpanded = expandedIndex === row.index;
-                  // Sanitize API-supplied brand name from field results
-                  const brandField = row.fields.find((f) => f.name === "brand");
-                  const displayBrand = brandField
-                    ? DOMPurify.sanitize(form.brand)
-                    : DOMPurify.sanitize(form.brand);
+                  const displayBrand = DOMPurify.sanitize(row.rowBrand);
 
                   return (
                     <React.Fragment key={row.index}>
-                      <tr className={`results-table__row results-table__row--${row.overall_verdict.toLowerCase()}`}>
+                      <tr
+                        className={`results-table__row results-table__row--${row.overall_verdict.toLowerCase()}`}
+                      >
                         <td className="results-table__cell results-table__cell--index">
                           {row.index + 1}
                         </td>
@@ -389,7 +447,9 @@ export function BatchUpload() {
                           {displayBrand}
                         </td>
                         <td className="results-table__cell">
-                          <span className={verdictBadgeClass(row.overall_verdict)}>
+                          <span
+                            className={verdictBadgeClass(row.overall_verdict)}
+                          >
                             {verdictLabel(row.overall_verdict)}
                           </span>
                         </td>
@@ -409,13 +469,15 @@ export function BatchUpload() {
                           <td colSpan={5}>
                             <ul className="expanded-fields">
                               {row.fields.map((field) => (
-                                <li key={field.name} className="expanded-fields__item">
+                                <li
+                                  key={field.name}
+                                  className="expanded-fields__item"
+                                >
                                   <strong>{DOMPurify.sanitize(field.name)}</strong>
                                   {" — "}
                                   <span className={verdictBadgeClass(field.verdict)}>
                                     {verdictLabel(field.verdict)}
-                                  </span>
-                                  {" "}
+                                  </span>{" "}
                                   <span className="expanded-fields__confidence">
                                     ({(field.confidence * 100).toFixed(0)}%)
                                   </span>
