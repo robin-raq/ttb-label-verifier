@@ -51,7 +51,10 @@ export function ResultCard({ result }: ResultCardProps) {
     <div className={`result-card ${verdictClass(verdict)}`}>
       <div className="result-card__header">
         <span className="result-card__field-name">{safeName}</span>
-        <span className={`verdict-pill ${verdictClass(verdict)}`}>
+        <span
+          className={`verdict-pill ${verdictClass(verdict)}`}
+          aria-label={`${safeName}, verdict ${VERDICT_LABELS[verdict]}`}
+        >
           {VERDICT_LABELS[verdict]}
         </span>
       </div>

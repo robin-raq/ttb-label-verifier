@@ -56,42 +56,84 @@ export function App() {
         </div>
       </header>
 
-      <nav className="tab-nav" role="navigation" aria-label="Screens">
+      <nav
+        className="tab-nav"
+        role="tablist"
+        aria-label="Primary sections"
+      >
         <button
           type="button"
+          id="tab-queue"
+          role="tab"
+          aria-selected={screen === "queue"}
+          aria-controls="panel-queue"
+          tabIndex={screen === "queue" ? 0 : -1}
           className={`tab-nav__tab${screen === "queue" ? " tab-nav__tab--active" : ""}`}
           onClick={() => selectScreen("queue")}
-          aria-current={screen === "queue" ? "page" : undefined}
         >
           Queue
         </button>
         <button
           type="button"
+          id="tab-single"
+          role="tab"
+          aria-selected={screen === "single"}
+          aria-controls="panel-single"
+          tabIndex={screen === "single" ? 0 : -1}
           className={`tab-nav__tab${screen === "single" ? " tab-nav__tab--active" : ""}`}
           onClick={() => selectScreen("single")}
-          aria-current={screen === "single" ? "page" : undefined}
         >
           Single Label
         </button>
         <button
           type="button"
+          id="tab-batch"
+          role="tab"
+          aria-selected={screen === "batch"}
+          aria-controls="panel-batch"
+          tabIndex={screen === "batch" ? 0 : -1}
           className={`tab-nav__tab${screen === "batch" ? " tab-nav__tab--active" : ""}`}
           onClick={() => selectScreen("batch")}
-          aria-current={screen === "batch" ? "page" : undefined}
         >
           Batch (up to 300)
         </button>
       </nav>
 
       <main className="app-main">
-        {screen === "queue" && (
-          <ApplicationQueue
-            onReview={handleReview}
-            onReviewBatch={handleReviewBatch}
-          />
-        )}
-        {screen === "single" && <SingleLabelForm prefill={reviewing} />}
-        {screen === "batch" && <BatchUpload prefillZipUrl={prefillBatchUrl} />}
+        <div
+          id="panel-queue"
+          role="tabpanel"
+          aria-labelledby="tab-queue"
+          hidden={screen !== "queue"}
+          tabIndex={-1}
+        >
+          {screen === "queue" && (
+            <ApplicationQueue
+              onReview={handleReview}
+              onReviewBatch={handleReviewBatch}
+            />
+          )}
+        </div>
+        <div
+          id="panel-single"
+          role="tabpanel"
+          aria-labelledby="tab-single"
+          hidden={screen !== "single"}
+          tabIndex={-1}
+        >
+          {screen === "single" && <SingleLabelForm prefill={reviewing} />}
+        </div>
+        <div
+          id="panel-batch"
+          role="tabpanel"
+          aria-labelledby="tab-batch"
+          hidden={screen !== "batch"}
+          tabIndex={-1}
+        >
+          {screen === "batch" && (
+            <BatchUpload prefillZipUrl={prefillBatchUrl} />
+          )}
+        </div>
       </main>
 
       <footer className="app-footer">
