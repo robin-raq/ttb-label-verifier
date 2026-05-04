@@ -1,0 +1,14 @@
+form_fields:
+  brand: OVERPROOF RUM
+  class_type: Jamaican Pot Still Rum
+  abv_percent: 75.5
+  net_contents: 750 mL
+expected_overall: PASS
+expected_per_field:
+  brand: PASS
+  class_type: PASS
+  abv: PASS
+  net_contents: PASS
+  warning_text: PASS
+  warning_caps: PASS
+  warning_bold: PASS
