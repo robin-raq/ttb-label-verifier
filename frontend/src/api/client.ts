@@ -121,23 +121,18 @@ export function verifyBatch(
   return controller;
 }
 
+const B64_ENCODE_CHUNK = 0x8000;
+
 /**
- * Convert a File to a base64 string (without the data URL prefix).
+ * Convert a File to a raw base64 string (no data-URL prefix).
+ * Uses chunked `arrayBuffer → btoa` to avoid stacking huge strings on FileReader/data-URLs for large uploads.
  */
 export async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip "data:<mime>;base64," prefix
-      const base64 = result.split(",")[1];
-      if (!base64) {
-        reject(new Error("Failed to extract base64 from FileReader result"));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += B64_ENCODE_CHUNK) {
+    const slice = bytes.subarray(i, i + B64_ENCODE_CHUNK);
+    binary += String.fromCharCode(...slice);
+  }
+  return btoa(binary);
 }
