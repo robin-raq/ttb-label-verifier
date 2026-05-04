@@ -65,6 +65,7 @@ export function ApplicationQueue({
                   type="button"
                   className="btn btn--primary"
                   onClick={() => onReviewBatch(batch)}
+                  aria-label={`Review batch ${batch.batch_id}: ${batch.title}`}
                 >
                   Review batch
                 </button>
@@ -113,6 +114,7 @@ export function ApplicationQueue({
                     type="button"
                     className="btn btn--primary btn--small"
                     onClick={() => onReview(app)}
+                    aria-label={`Review application ${app.cola_id}: ${app.applicant}`}
                   >
                     Review
                   </button>

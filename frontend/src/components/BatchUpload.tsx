@@ -306,7 +306,7 @@ export function BatchUpload({ prefillZipUrl }: BatchUploadProps = {}) {
   const previewOverflow = previewSourceFiles.length > PREVIEW_CAP;
 
   return (
-    <section className="screen">
+    <section className="screen" aria-busy={loading}>
       <h2 className="screen__title">Batch Verification</h2>
       <p className="screen__subtitle">
         Upload a ZIP containing <code className="inline-code">manifest.csv</code>{" "}
