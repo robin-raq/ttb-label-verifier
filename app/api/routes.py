@@ -10,6 +10,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -53,7 +54,7 @@ except ImportError:
     PROMPT_VERSION = "v1"  # fallback while B3 is not yet merged
 
 # Model identifier for audit log
-MODEL_ID = __import__("os").environ.get("MODEL_NAME", "fake-test")
+MODEL_ID = os.environ.get("MODEL_NAME", "fake-test")
 
 router = APIRouter()
 
@@ -295,12 +296,6 @@ async def verify_label(
 # ---------------------------------------------------------------------------
 # POST /verify/batch (FR-014)
 # ---------------------------------------------------------------------------
-
-
-class BatchItem:
-    def __init__(self, image_b64: str, payload: dict):
-        self.image_b64 = image_b64
-        self.payload = payload
 
 
 @router.post("/verify/batch")
