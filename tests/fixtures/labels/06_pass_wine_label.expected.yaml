@@ -1,0 +1,14 @@
+form_fields:
+  brand: VINEYARD HEIGHTS
+  class_type: Sonoma County Chardonnay
+  abv_percent: 13.5
+  net_contents: 750 mL
+expected_overall: PASS
+expected_per_field:
+  brand: PASS
+  class_type: PASS
+  abv: PASS
+  net_contents: PASS
+  warning_text: PASS
+  warning_caps: PASS
+  warning_bold: PASS

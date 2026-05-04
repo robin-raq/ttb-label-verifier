@@ -1,0 +1,10 @@
+form_fields:
+  brand: OLD TOM DISTILLERY
+  class_type: Kentucky Straight Bourbon Whiskey
+  abv_percent: 45.0
+  net_contents: 750 mL
+expected_overall: FAIL
+expected_per_field: null
+notes: "Missing federal warning is the most consequential failure mode. Tolerant per-field\
+  \ \u2014 warning_text definitely FAILs; warning_caps and warning_bold may report\
+  \ FAIL or NEEDS_REVIEW depending on how the model treats the absence."

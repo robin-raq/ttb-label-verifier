@@ -1,0 +1,8 @@
+form_fields:
+  brand: OLD TOM DISTILLERY
+  class_type: Kentucky Straight Bourbon Whiskey
+  abv_percent: 45.0
+  net_contents: 750 mL
+expected_overall: FAIL
+expected_per_field: null
+notes: Tolerant per-field. Tests U+2019 vs U+0027 byte-equal sensitivity.
