@@ -22,6 +22,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import get_openai_client
 from app.audit.jsonl_logger import write_audit_record
+from app.extraction import VisionClient
 from app.schemas.api import (
     ErrorCode,
     ErrorEnvelope,
@@ -149,7 +150,7 @@ def _run_comparators(
 
 
 async def _call_with_retry(
-    client: Any, image_bytes: bytes
+    client: VisionClient | None, image_bytes: bytes
 ) -> LabelExtraction:
     """Call the vision client with one retry on failure — FR-012.
 
@@ -171,7 +172,7 @@ async def _call_with_retry(
 async def _process_single(
     image_bytes: bytes,
     verify_request: VerifyRequest,
-    client: Any,
+    client: VisionClient | None,
 ) -> tuple[VerifyResponse, str, LabelExtraction | None]:
     """Core verification pipeline for one image.
 
@@ -259,7 +260,7 @@ async def verify_label(
     request: Request,
     image: UploadFile = File(...),
     payload: str = Form(...),
-    client: Any = Depends(get_openai_client),
+    client: VisionClient | None = Depends(get_openai_client),
 ) -> JSONResponse | VerifyResponse:
     """Single-label verification — FR-001, FR-002, FR-003, FR-012, FR-013."""
     # Parse the form JSON payload
@@ -305,7 +306,7 @@ class BatchItem:
 @router.post("/verify/batch")
 async def verify_batch(
     request: Request,
-    client: Any = Depends(get_openai_client),
+    client: VisionClient | None = Depends(get_openai_client),
 ):
     """Batch verification with SSE streaming — FR-014, §3.2."""
     body = await request.json()
