@@ -27,6 +27,7 @@ VALID_PAYLOAD = {
 REQUIRED_AUDIT_KEYS = {
     "ts",
     "request_id",
+    "batch_id",
     "image_sha256",
     "model_id",
     "prompt_version",
