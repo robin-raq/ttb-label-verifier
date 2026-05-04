@@ -68,6 +68,18 @@ export function verifyBatch(
 ): AbortController {
   const controller = new AbortController();
 
+  // `fetchEventSource` rejects its returned promise on TWO distinct paths:
+  //   1. After the SSE stream is open: our `onerror` runs (calling onError)
+  //      and re-throws to stop retries; the throw rejects the promise.
+  //   2. BEFORE the stream is open: DNS failure, CORS preflight rejection,
+  //      HTTP 4xx/5xx returned with no event-stream body, etc. Our `onerror`
+  //      is *not* called for these — the library rejects directly.
+  //
+  // Without `onErrorFired`, path (2) leaves the UI stuck in `loading=true`
+  // because `onError` never runs. With it, path (1) is dedup'd (we already
+  // called onError inside `onerror`) and path (2) is surfaced.
+  let onErrorFired = false;
+
   fetchEventSource(`${API_BASE}/verify/batch`, {
     method: "POST",
     headers: {
@@ -109,13 +121,19 @@ export function verifyBatch(
     },
 
     onerror(err) {
+      onErrorFired = true;
       callbacks.onError?.(err);
       // Re-throw to stop retries (library treats thrown `onerror` as fatal — see fetch.js reject path).
       throw err;
     },
-  }).catch(() => {
+  }).catch((err: unknown) => {
     if (controller.signal.aborted) return;
-    // Fatal errors surfaced in `onerror` above; this handler only absorbs the stray rejection.
+    // Surface pre-stream rejections (DNS, CORS, HTTP error before the
+    // event-stream body) — our `onerror` won't have fired for these,
+    // so the UI's `loading=true` would otherwise stick forever.
+    if (!onErrorFired) {
+      callbacks.onError?.(err);
+    }
   });
 
   return controller;
