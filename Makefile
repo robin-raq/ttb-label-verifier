@@ -14,7 +14,7 @@ ci-cov-comparators:
 	pytest tests/comparators -q --cov=app.comparators --cov-report=term-missing --cov-fail-under=95
 
 ci-cov-verdict:
-	pytest tests/test_verdict.py -q --cov=app.verdict --cov-report=term-missing --cov-fail-under=90
+	pytest tests/test_smoke.py -q --cov=app.verdict --cov-report=term-missing --cov-fail-under=90
 
 ci-cov-api:
 	pytest tests/api tests/contract tests/adversarial -q --cov=app.api --cov-report=term-missing --cov-fail-under=80
