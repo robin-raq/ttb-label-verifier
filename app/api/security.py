@@ -8,6 +8,12 @@ Uses the `secure` package which mirrors Helmet.js for Python.
 
 CSP in production MUST NOT include 'unsafe-inline' or 'unsafe-eval' (FR-015).
 Local dev may use a looser CSP if needed for Swagger/HMR (documented in README).
+
+CSP `img-src` must allow `blob:` and `data:` schemes — the SPA renders
+file-upload + COLA-attached label previews via `URL.createObjectURL(...)`
+which produces `blob:...` URIs. Without this allowance, every image
+preview in Single-Label / Batch / Queue-Review flows is silently blocked.
+This relaxation is image-only and does NOT introduce 'unsafe-inline'/eval.
 """
 from __future__ import annotations
 
@@ -34,7 +40,10 @@ class SecureHeadersMiddleware(BaseHTTPMiddleware):
         if _is_production():
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             response.headers["X-Content-Type-Options"] = "nosniff"
-            response.headers["Content-Security-Policy"] = "default-src 'self'"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "img-src 'self' blob: data:"
+            )
             response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Permissions-Policy"] = "geolocation=(), microphone=()"

@@ -111,6 +111,30 @@ def test_csp_no_unsafe_eval_in_production(secure_client):
     assert "'unsafe-eval'" not in csp, f"CSP contains 'unsafe-eval': {csp}"
 
 
+def test_csp_img_src_allows_blob_and_data(secure_client):
+    """The SPA renders file-upload + COLA-attached label previews via
+    URL.createObjectURL(...), which produces `blob:...` URIs. The CSP MUST
+    allow those (and `data:` for tiny inline images) on `img-src` — without
+    this, every image preview is silently blocked in production."""
+    c, tiny_png = secure_client
+    resp = c.post(
+        "/verify",
+        data={"payload": VALID_PAYLOAD},
+        files={"image": ("label.png", tiny_png, "image/png")},
+    )
+    csp = (
+        resp.headers.get("content-security-policy")
+        or resp.headers.get("Content-Security-Policy", "")
+    ).lower()
+    # `img-src` directive must be explicit (otherwise it falls back to
+    # `default-src 'self'` which blocks blob:).
+    assert "img-src" in csp, f"img-src directive missing from CSP: {csp}"
+    # Both schemes must be allowed.
+    img_src = csp.split("img-src", 1)[1].split(";", 1)[0]
+    assert "blob:" in img_src, f"blob: not allowed in img-src: {img_src}"
+    assert "data:" in img_src, f"data: not allowed in img-src: {img_src}"
+
+
 def test_referrer_policy_present(secure_client):
     """FR-015: Referrer-Policy must be set."""
     c, tiny_png = secure_client
