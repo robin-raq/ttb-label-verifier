@@ -52,7 +52,8 @@ jobs:
             tests/contract \
             tests/adversarial \
             tests/performance \
-            tests/extraction
+            tests/extraction \
+            tests/eval
 
   frontend-build:
     name: Frontend build check
