@@ -70,4 +70,106 @@ export const MOCK_APPLICATIONS: MockApplication[] = [
     label_image_url: "/sample-labels/03_review_glare.png",
     scenario_hint: "Photo has glare — image_quality may trigger NEEDS_REVIEW",
   },
+  {
+    cola_id: "TTB-2026-001237",
+    applicant: "Old Tom Distillery, LLC",
+    applicant_address: "Bardstown, Kentucky",
+    submitted: "4 hours ago",
+    fields: {
+      // Form expects "Old Tom" but the bottle in the file is from "Old Man".
+      brand: "OLD TOM DISTILLERY",
+      class_type: "Kentucky Straight Bourbon Whiskey",
+      abv_percent: 45.0,
+      net_contents: "750 mL",
+    },
+    label_image_url: "/sample-labels/04_fail_brand_mismatch.png",
+    scenario_hint: "Brand mismatch — label reads OLD MAN, application says OLD TOM",
+  },
+  {
+    cola_id: "TTB-2026-001238",
+    applicant: "Old Tom Distillery, LLC",
+    applicant_address: "Bardstown, Kentucky",
+    submitted: "6 hours ago",
+    fields: {
+      brand: "OLD TOM DISTILLERY",
+      class_type: "Kentucky Straight Bourbon Whiskey",
+      abv_percent: 45.0,
+      net_contents: "750 mL", // application claims full bottle, label shows half
+    },
+    label_image_url: "/sample-labels/05_fail_volume_mismatch.png",
+    scenario_hint: "Volume mismatch — label says 375 mL, application says 750 mL",
+  },
+  {
+    cola_id: "TTB-2026-001239",
+    applicant: "Vineyard Heights Winery",
+    applicant_address: "Sonoma County, California",
+    submitted: "yesterday",
+    fields: {
+      brand: "VINEYARD HEIGHTS",
+      class_type: "Sonoma County Chardonnay",
+      abv_percent: 13.5,
+      net_contents: "750 mL",
+    },
+    label_image_url: "/sample-labels/06_pass_wine_label.png",
+    scenario_hint: "Wine application — different beverage shape, all fields match",
+  },
+  {
+    cola_id: "TTB-2026-001240",
+    applicant: "Westbrook Brewing Co.",
+    applicant_address: "Charleston, South Carolina",
+    submitted: "yesterday",
+    fields: {
+      brand: "WESTBROOK BREWING",
+      class_type: "American IPA",
+      abv_percent: 6.5,
+      net_contents: "12 fl oz",
+    },
+    label_image_url: "/sample-labels/07_pass_beer_label.png",
+    scenario_hint: "Beer application — fl-oz net contents (volume normalizer)",
+  },
+  {
+    cola_id: "TTB-2026-001241",
+    applicant: "Old Tom Distillery, LLC",
+    applicant_address: "Bardstown, Kentucky",
+    submitted: "2 hours ago",
+    fields: {
+      brand: "OLD TOM DISTILLERY",
+      // Application claims Vodka but the label is clearly Bourbon.
+      class_type: "Vodka",
+      abv_percent: 45.0,
+      net_contents: "750 mL",
+    },
+    label_image_url: "/sample-labels/08_fail_class_type_mismatch.png",
+    scenario_hint: "Class/type mismatch — application says Vodka, label is Bourbon",
+  },
+  {
+    cola_id: "TTB-2026-001242",
+    applicant: "Old Tom Distillery, LLC",
+    applicant_address: "Bardstown, Kentucky",
+    submitted: "30 minutes ago",
+    fields: {
+      brand: "OLD TOM DISTILLERY",
+      class_type: "Kentucky Straight Bourbon Whiskey",
+      abv_percent: 45.0,
+      net_contents: "750 mL",
+    },
+    label_image_url: "/sample-labels/11_fail_warning_text_tampered.png",
+    scenario_hint:
+      "Warning text tampered — label says 'Doctor General' instead of 'Surgeon General'",
+  },
+  {
+    cola_id: "TTB-2026-001243",
+    applicant: "Old Tom Distillery, LLC",
+    applicant_address: "Bardstown, Kentucky",
+    submitted: "10 minutes ago",
+    fields: {
+      brand: "OLD TOM DISTILLERY",
+      class_type: "Kentucky Straight Bourbon Whiskey",
+      abv_percent: 45.0,
+      net_contents: "750 mL",
+    },
+    label_image_url: "/sample-labels/adv_03_missing_warning.png",
+    scenario_hint:
+      "No federal Government Warning on the label — most consequential failure mode",
+  },
 ];
