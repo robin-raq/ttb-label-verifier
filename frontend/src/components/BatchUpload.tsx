@@ -33,6 +33,17 @@ interface BatchRow extends BatchItemEvent {
   rowBrand: string;
 }
 
+interface BatchUploadProps {
+  /**
+   * If set, the component fetches this URL on mount, treats the response as
+   * a ZIP File, and feeds it into the manifest-parser pipeline as if the
+   * user had picked it via the file input. Used by the mock COLA queue's
+   * "Review batch" action so the agent can demo the bulk-review path
+   * without authoring a manifest.csv first.
+   */
+  prefillZipUrl?: string | null;
+}
+
 function verdictBadgeClass(verdict: Verdict): string {
   switch (verdict) {
     case "PASS":
@@ -55,7 +66,7 @@ function verdictLabel(verdict: Verdict): string {
   }
 }
 
-export function BatchUpload() {
+export function BatchUpload({ prefillZipUrl }: BatchUploadProps = {}) {
   const zipInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -140,6 +151,47 @@ export function BatchUpload() {
       cancelled = true;
     };
   }, [zipFile]);
+
+  // Auto-fetch a pre-staged ZIP when the queue's "Review batch" CTA hands one
+  // in via prop. The fetched bytes are wrapped in a File so the rest of the
+  // component (parse useEffect, preview strip, submit) works exactly as if
+  // the user had picked the file via the input.
+  useEffect(() => {
+    if (!prefillZipUrl) return;
+
+    let cancelled = false;
+    async function loadPrefill(url: string) {
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          throw new Error(`Sample batch fetch failed: ${resp.status}`);
+        }
+        const blob = await resp.blob();
+        const filename =
+          url.split("/").pop()?.split("?")[0] ?? "sample-batch.zip";
+        const file = new File([blob], filename, {
+          type: blob.type || "application/zip",
+        });
+        if (cancelled) return;
+        setZipFile(file);
+        setRows([]);
+        setProgress(null);
+        setError(null);
+        setDone(false);
+        setExpandedIndex(null);
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        setError(`Couldn't load the sample batch: ${msg}`);
+      }
+    }
+
+    void loadPrefill(prefillZipUrl);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [prefillZipUrl]);
 
   function handleZipPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;

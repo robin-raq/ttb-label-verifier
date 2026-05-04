@@ -6,16 +6,29 @@
  * structured app data and the label image already attached. Mirrors how
  * an agent would work in real COLA, where applications and label artwork
  * arrive together via the system, not via manual entry.
+ *
+ * The queue also surfaces pre-staged *batches* (ZIP + manifest.csv) at the
+ * top, so an agent can demo the bulk-review path without authoring a CSV.
+ * Clicking "Review batch" switches to the Batch tab with the ZIP auto-loaded.
  */
 
 import DOMPurify from "dompurify";
-import { MOCK_APPLICATIONS, type MockApplication } from "../data/mockApplications";
+import {
+  MOCK_APPLICATIONS,
+  MOCK_BATCHES,
+  type MockApplication,
+  type MockBatch,
+} from "../data/mockApplications";
 
 interface ApplicationQueueProps {
   onReview: (app: MockApplication) => void;
+  onReviewBatch: (batch: MockBatch) => void;
 }
 
-export function ApplicationQueue({ onReview }: ApplicationQueueProps) {
+export function ApplicationQueue({
+  onReview,
+  onReviewBatch,
+}: ApplicationQueueProps) {
   return (
     <section className="screen">
       <h2 className="screen__title">Applications awaiting review</h2>
@@ -24,6 +37,42 @@ export function ApplicationQueue({ onReview }: ApplicationQueueProps) {
         TTB's COLAs Online system; for the prototype they're a fixed sample set.
         Click <strong>Review</strong> to verify a label against its application.
       </p>
+
+      {MOCK_BATCHES.length > 0 && (
+        <div className="queue-batches" aria-label="Pending batches">
+          {MOCK_BATCHES.map((batch) => (
+            <article key={batch.batch_id} className="queue-batch">
+              <div className="queue-batch__body">
+                <span className="queue-batch__pill">BATCH</span>
+                <h3 className="queue-batch__title">
+                  {DOMPurify.sanitize(batch.title)}
+                </h3>
+                <p className="queue-batch__desc">
+                  {DOMPurify.sanitize(batch.description)}
+                </p>
+                <p className="queue-batch__meta">
+                  <span>
+                    <strong>{batch.item_count}</strong> applications
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span>{DOMPurify.sanitize(batch.batch_id)}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{DOMPurify.sanitize(batch.submitted)}</span>
+                </p>
+              </div>
+              <div className="queue-batch__action">
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => onReviewBatch(batch)}
+                >
+                  Review batch
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
 
       <div className="queue-table-wrap">
         <table className="queue-table" aria-label="Pending applications">
