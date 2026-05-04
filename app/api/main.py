@@ -10,7 +10,7 @@ Import `app` from here in tests and ASGI servers.
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,10 +62,11 @@ app.add_middleware(SlowAPIMiddleware)
 _raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
 _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
+# Stateful auth / cookies unused — disallow credentials so wildcard origins remain valid.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -90,6 +91,24 @@ def health() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 _FRONTEND_DIST = Path(os.environ.get("FRONTEND_DIST_DIR", "/app/frontend_dist"))
+
+
+def _safe_frontend_file(full_path: str) -> Path | None:
+    """Serve only paths that resolve inside `_FRONTEND_DIST` (block path traversal).
+
+    Rejects '..', NUL, Windows drive letters, absolute segments, etc. via pathlib
+    resolution + `.relative_to()` check.
+    """
+    # Drop leading slashes so Path("/foo") joining doesn't ignore the prefix.
+    rel = PurePosixPath(full_path.replace("\\", "/").lstrip("/"))
+    candidate = (_FRONTEND_DIST / Path(*rel.parts)).resolve()
+    try:
+        candidate.relative_to(_FRONTEND_DIST.resolve())
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
+
+
 if _FRONTEND_DIST.is_dir():
     app.mount(
         "/assets",
@@ -103,9 +122,8 @@ if _FRONTEND_DIST.is_dir():
 
     @app.get("/{full_path:path}")
     def _spa_fallback(full_path: str) -> FileResponse:
-        # SPA fallback — any unmatched route returns the index, except /verify*
-        # and /health which the API router and FastAPI itself already own.
-        candidate = _FRONTEND_DIST / full_path
-        if candidate.is_file():
-            return FileResponse(candidate)
+        # SPA fallback: static file if safe path exists, else shell.
+        resolved = _safe_frontend_file(full_path)
+        if resolved is not None:
+            return FileResponse(resolved)
         return FileResponse(_FRONTEND_DIST / "index.html")
