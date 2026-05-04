@@ -48,11 +48,11 @@ jobs:
           pytest -q \
             tests/test_smoke.py \
             tests/comparators \
-            tests/test_verdict.py \
             tests/api \
             tests/contract \
             tests/adversarial \
-            tests/performance
+            tests/performance \
+            tests/extraction
 
   frontend-build:
     name: Frontend build check
