@@ -26,9 +26,13 @@ FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "labels"
 
 
 def _list_fixtures() -> list[Path]:
+    """All eval fixtures: synthetic PNGs at the top level + any analyst-
+    sourced real labels under `real/` (populated via
+    `scripts/fetch_real_labels.py`). Recursive so the harness picks up new
+    real fixtures with no code change."""
     if not FIXTURES_DIR.is_dir():
         return []
-    return sorted(p for p in FIXTURES_DIR.glob("*.png"))
+    return sorted(p for p in FIXTURES_DIR.rglob("*.png"))
 
 
 def _load_expected(png_path: Path) -> dict:
