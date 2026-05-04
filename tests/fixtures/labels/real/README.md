@@ -60,6 +60,6 @@ Each invocation:
 - `RUN_LLM_TESTS=1 pytest tests/eval -q`: hits the real OpenAI vision client
   for every fixture, including these. Cost: a few cents per real fixture.
 
-For interview / take-home grading, real fixtures are the high-leverage
-signal: 12 synthetic + N real demonstrates that the synthetic eval set is a
+Real fixtures are the high-leverage eval signal: 12 synthetic + N real
+demonstrates that the synthetic eval set is a
 proxy, not the goalpost.

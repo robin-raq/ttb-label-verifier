@@ -23,7 +23,7 @@ AI-powered prototype that helps TTB compliance agents verify alcohol-beverage la
 | **2. Deployed application URL** | [ttb-label-verifier-production-4436.up.railway.app](https://ttb-label-verifier-production-4436.up.railway.app) |
 | ↳ Working prototype to test | Mock-COLA queue (10 fixture-driven applications + pre-staged BATCH demo), single-label verify, batch ZIP + manifest.csv, SSE-streamed per-row results, image preview |
 
-Bonus context an interviewer typically asks about: [What's not implemented (limitations)](#whats-not-implemented-limitations) · [Future work](#future-work-ingestion-beyond-v1-zip--manifest) · [`ROADMAP.md`](ROADMAP.md) (planning + investigated-and-rejected log).
+Adjacent context: [What's not implemented (limitations)](#whats-not-implemented-limitations) · [Future work](#future-work-ingestion-beyond-v1-zip--manifest) · [`ROADMAP.md`](ROADMAP.md) (planning + investigated-and-rejected log).
 
 ---
 
