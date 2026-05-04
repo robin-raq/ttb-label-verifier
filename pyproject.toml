@@ -17,6 +17,7 @@ dependencies = [
     "secure>=0.3.0",
     "slowapi>=0.1.9",
     "sse-starlette>=2.1.3",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
