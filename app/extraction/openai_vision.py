@@ -11,10 +11,18 @@ from __future__ import annotations
 
 import base64
 
+import filetype
 from openai import AsyncOpenAI
 
 from app.extraction.prompts import PROMPT_VERSION, SYSTEM_PROMPT
 from app.schemas.extraction import LabelExtraction
+
+# FR-002 accepts these three MIME types. Anything else is rejected upstream by
+# the API layer's _validate_image, so by the time we reach the vision client
+# the bytes are guaranteed to match one of these. PNG is the safe fallback if
+# magic-byte sniffing somehow returns nothing (defence-in-depth, not a real
+# code path).
+_ALLOWED_MIMES = {"image/jpeg", "image/png", "image/webp"}
 
 # JSON schema derived directly from the Pydantic model — never hand-written.
 # Drift between this schema and LabelExtraction would be caught by structured-
@@ -64,7 +72,9 @@ class OpenAIVisionClient:
             possible with older model versions or schema mismatches).
         """
         b64 = base64.b64encode(image_bytes).decode("ascii")
-        data_url = f"data:image/png;base64,{b64}"
+        kind = filetype.guess(image_bytes)
+        mime = kind.mime if kind and kind.mime in _ALLOWED_MIMES else "image/png"
+        data_url = f"data:{mime};base64,{b64}"
 
         response = await self._client.chat.completions.create(
             model=self._model,
