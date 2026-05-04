@@ -25,6 +25,18 @@ curl -X POST https://ttb-label-verifier-production-4436.up.railway.app/verify \
   -F 'payload={"brand":"OLD TOM DISTILLERY","class_type":"Kentucky Straight Bourbon Whiskey","abv_percent":45.0,"net_contents":"750 mL"}'
 ```
 
+### 4. Batch — ZIP + `manifest.csv`
+On the **Batch** tab, upload a ZIP containing a `manifest.csv` (root or any subfolder; the shallowest file wins) plus the image files referenced by each row. One row = one COLA-style application with its own brand, class/type, ABV, and net contents. Optional `cola_id` is passed through as `request_id` for tracing.
+
+Example `manifest.csv` (see also `samples/example-manifest.csv`):
+
+```csv
+image_filename,brand,class_type,abv_percent,net_contents,cola_id
+labels/sku-a.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,45.0,750 mL,COLA-001
+```
+
+A TTB compliance batch is N *different* applications, so there's intentionally no "shared form" mode — applying one set of fields to many label images doesn't model the real job.
+
 ---
 
 ## TL;DR — what this does
@@ -42,7 +54,7 @@ This prototype mechanizes the cross-reference. One OpenAI multimodal call extrac
 │ React (Vite) UI                                                 │
 │   • Mock COLA queue (default)                                   │
 │   • Single-label form                                           │
-│   • Batch upload + SSE progress                                 │
+│   • Batch: ZIP + manifest.csv (per-row payloads) + SSE                  │
 └────────────────┬────────────────────────────────────────────────┘
                  │ multipart POST /verify   |   POST /verify/batch (SSE)
                  ▼
@@ -115,7 +127,7 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 **Decision:** GPT-4o reads the label image AND returns a typed `LabelExtraction` JSON in one call. Comparison logic is pure Python in our service, not an LLM.
 
 **Alternatives considered:**
-- Two models (vision → comparison) as the instructor's diagram suggested.
+- Two models (vision → comparison) in separate API calls instead of one multimodal pass.
 - Function-calling agent that orchestrates per-field tool calls.
 
 **Why this:** two LLM calls double the network latency, double the failure surface, and require two API keys. One call returning structured JSON gives us the same data with half the round-trips. Comparison-as-LLM is also the wrong place for that logic — comparators must be unit-testable without burning OpenAI tokens, and federal-statute compliance (the warning text) cannot rest on a stochastic model's judgment.
@@ -182,7 +194,7 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 
 ### 10. Async fan-out for batch (asyncio.Semaphore(25)), not a job queue
 
-**Decision:** `POST /verify/batch` accepts up to 500 items, processes them concurrently via an `asyncio.Semaphore(25)`, and streams per-item results via SSE. No Celery / RQ / job-queue infrastructure.
+**Decision:** `POST /verify/batch` accepts up to 500 JSON items (`image_b64` + per-item `payload`), processes them concurrently via an `asyncio.Semaphore(25)`, and streams per-item results via SSE. The SPA unpacks **ZIP + `manifest.csv`** in the browser and builds that payload list — heterogeneous batches without COLA wiring. No Celery / RQ / job-queue infrastructure.
 
 **Alternatives considered:** real task queue (Celery + Redis) with "submit job, poll for results."
 
@@ -282,6 +294,8 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 | `react`, `react-dom` v18 | minimal SPA; no router (3 screens, simple state suffices) |
 | `dompurify` | sanitize attacker-controllable extracted text before JSX rendering |
 | `@microsoft/fetch-event-source` | SSE over POST (native `EventSource` only supports GET) |
+| `jszip` | unpack ZIP + images client-side before batch POST |
+| `papaparse` | parse `manifest.csv` rows with tolerant header handling |
 | `vite` v6 | fast dev + small prod bundles |
 | `typescript` v5 | catch API contract drift at compile time |
 
@@ -313,7 +327,7 @@ These shape the v1 scope; each is captured explicitly so the take-home reviewer 
 4. **Single LLM provider.** OpenAI only. No Anthropic / Google / open-source fallback.
 5. **Ephemeral audit log on the prototype.** The `/data/audit.jsonl` file is wiped on container restart. Production needs a Railway-managed volume — one click.
 6. **OpenAI does not train on API requests by default.** Per OpenAI's enterprise data policy (2023+). Documented as an assumption since v1 ships no separate data-handling agreement.
-7. **The reviewer's network can reach OpenAI.** The discovery interview noted TTB's network blocks many outbound endpoints; the prototype runs *outside* that network, so this isn't a deployment problem here, but production rollout would need Azure OpenAI in TTB's existing Azure tenant.
+7. **The reviewer's network can reach OpenAI.** The discovery interview noted TTB's network blocks many outbound endpoints; the prototype runs *outside* that network, so this isn't a deployment problem here. Production rollout would swap in Azure OpenAI via the `VisionClient` Protocol seam — see **Deployment constraints** above.
 8. **The 5-second SLA is per single-label call.** Batch is allowed to take longer in aggregate but each label finishes in ≤ 5 s.
 9. **Fixtures aren't reviewed photos.** They're programmatic. Real-world labels would tune the prompt better.
 
@@ -329,33 +343,43 @@ Honest list — the take-home asks for trade-offs and limitations.
 - **Confidence thresholds are empirical.** 0.95 / 0.80 was reasoned from PRESEARCH §3 but not calibrated against a large eval set.
 - **No persistent state across container restarts.** Audit log lives on the container's filesystem; needs a Railway volume.
 - **No real auth.** Anyone with the URL can submit.
-- **No CSV/ZIP batch input.** Frontend batch tab applies one form to all uploaded images. Heterogeneous batch via JSON manifest is `ROADMAP.md` work.
+- **ZIP is client-expanded only.** Large archives are fully loaded in-browser before POST; giant batches can stress memory versus a server-side ingestion job (`ROADMAP.md`).
 - **Volume normalization is naive.** Handles mL ↔ L ↔ fl oz with ±1 mL tolerance; obscure units (e.g. `375 ml e` European convention) might fail.
 - **Mock COLA queue is hard-coded.** Three fixed applications, no auth, no pagination. Real COLA integration is a v2 swap.
 - **Fixture #01 currently returns FAIL on the live deploy** because the rendered "GOVERNMENT WARNING:" prefix sits on its own line and the model intermittently classifies it as a heading. Documented in `tests/fixtures/labels/README.md` — prompt-tuning fix for v1.1.
 
 ---
 
+## Future work (ingestion beyond v1 ZIP + manifest)
+
+Two follow-ups discussed in discovery that are intentionally **not** in this prototype beyond documenting the trajectory:
+
+1. **Official COLA / TTB structured export.** When Treasury exposes a definitive export shape (canonical column names, encodings, or API payload), add a first-class importer that maps that format to `{ image, VerifyRequest }` per row — without agents hand-maintaining `manifest.csv` column aliases. Might include server-side ZIP ingest to avoid loading hundreds of megabytes into the browser tab.
+
+2. **COLA integration + optional assisted parsing.** Marcus de-scoped direct COLA .NET/API access for this exercise (`ROADMAP.md`). A production path pulls application metadata and label attachments via read-only integration, then feeds the existing verify pipeline — still **extract → deterministic compare**, not LLM judging compliance. Optionally, where no machine-readable bundle exists, explore **assistive** PDF or form-image parsing (human-confirmed fields); that introduces non-determinism and heavier compliance review compared to manifests or API-sourced fields.
+
+---
+
 ## Testing
 
 ```bash
-make test                  # full suite (148 passed, 4 skipped — LLM-gated)
+make test                  # full suite (~194 collected; LLM-gated cases skipped by default)
 make ci-cov-comparators    # comparators ≥95% line coverage gate
-make ci-cov-verdict        # verdict.py ≥90% gate
+make ci-cov-verdict        # app.verdict via test_smoke verdict cases, ≥90% gate
 make ci-cov-api            # api/ + contract/ + adversarial/ ≥80% gate
 make eval                  # mocked eval harness (pipeline wiring)
 RUN_LLM_TESTS=1 make eval-real    # eval against real OpenAI (burns tokens)
 make regenerate-fixtures   # rebuild test labels from generate_fixtures.py
 ```
 
-**Test inventory (148 tests):**
-- `tests/test_smoke.py` — foundation imports, canonical warning sanity, FR-017 precedence.
-- `tests/comparators/` — 78 unit tests, 100% line coverage, includes adversarial cases (smart quotes, title-case prefix, malformed numerics).
-- `tests/api/` — 56 integration tests via FastAPI TestClient + mocked OpenAI client; covers FR-001/002/007/012/013/014/015/017 plus security headers and rate limiting.
+**Test inventory:**
+- `tests/test_smoke.py` — foundation imports, canonical warning sanity, FR-017 precedence, `compute_overall_verdict` unit cases.
+- `tests/comparators/` — unit tests (rapidfuzz / volume / warning), includes adversarial cases (smart quotes, title-case prefix, malformed numerics).
+- `tests/api/` — FastAPI TestClient + mocked OpenAI client; covers FR-001/002/007/012/013/014/015/017 plus security headers, rate limiting, path traversal on static SPA, batch audit.
 - `tests/contract/` — response-shape stability + `error.code` enum lock (silent vocabulary expansion fails the test).
 - `tests/adversarial/` — prompt-injection-in-image, smart-apostrophe brand match.
 - `tests/performance/` — NFR-001 mocked synthetic-latency gate (≤ 5000 ms).
-- `tests/eval/` — pipeline against fixtures (real-LLM tier gated by `RUN_LLM_TESTS=1`).
+- `tests/eval/` — fixture YAML integrity + (optional) real-LLM pipeline check when `RUN_LLM_TESTS=1`.
 - `tests/llm/` — opt-in real-OpenAI smoke.
 
 ---
@@ -409,8 +433,9 @@ ttb-label-verifier/
 │   │   ├── components/
 │   │   │   ├── ApplicationQueue.tsx      # mock COLA queue (default screen)
 │   │   │   ├── SingleLabelForm.tsx       # manual + queue-prefilled form
-│   │   │   ├── BatchUpload.tsx           # multi-file SSE batch
+│   │   │   ├── BatchUpload.tsx           # ZIP + manifest.csv → SSE batch
 │   │   │   └── ResultCard.tsx            # per-field verdict pill
+│   │   ├── utils/batchManifest.ts        # ZIP + manifest.csv → per-row payloads
 │   │   ├── data/mockApplications.ts      # 3 fake COLA records
 │   │   ├── api/
 │   │   │   ├── client.ts                 # multipart + SSE-over-POST
@@ -419,6 +444,8 @@ ttb-label-verifier/
 │   │   ├── main.tsx                      # React entry
 │   │   └── styles.css                    # hand-rolled, no Tailwind
 │   └── public/sample-labels/             # PNGs the queue references
+├── samples/                              # docs-only examples (not used at runtime)
+│   └── example-manifest.csv             # CSV template for ZIP batches
 ├── tests/
 │   ├── comparators/                      # 78 unit tests
 │   ├── api/                              # 30 integration tests (mocked OpenAI)
