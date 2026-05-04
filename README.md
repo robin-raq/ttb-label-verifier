@@ -10,6 +10,23 @@ AI-powered prototype that helps TTB compliance agents verify alcohol-beverage la
 
 ---
 
+## Deliverables (per take-home brief)
+
+| Required | Where to find it |
+|---|---|
+| **1. Source code repository** | [github.com/robin-raq/ttb-label-verifier](https://github.com/robin-raq/ttb-label-verifier) — `main` branch |
+| ↳ All source code | This repo. Backend in `app/`, frontend in `frontend/`, tests in `tests/`. |
+| ↳ README setup + run instructions | [Local development](#local-development) · [Testing](#testing) |
+| ↳ Brief docs of **approach** | [TL;DR — what this does](#tldr--what-this-does) · [Architecture](#architecture) · [Key design decisions](#key-design-decisions) (17 numbered decisions, each with alternatives + tradeoff) |
+| ↳ Brief docs of **tools used** | [Tools and libraries](#tools-and-libraries) — Backend / Frontend / Testing sub-tables |
+| ↳ Brief docs of **assumptions made** | [Assumptions made](#assumptions-made) — 9 numbered items |
+| **2. Deployed application URL** | [ttb-label-verifier-production-4436.up.railway.app](https://ttb-label-verifier-production-4436.up.railway.app) |
+| ↳ Working prototype to test | Mock-COLA queue (10 fixture-driven applications + pre-staged BATCH demo), single-label verify, batch ZIP + manifest.csv, SSE-streamed per-row results, image preview |
+
+Bonus context an interviewer typically asks about: [What's not implemented (limitations)](#whats-not-implemented-limitations) · [Future work](#future-work-ingestion-beyond-v1-zip--manifest) · [`ROADMAP.md`](ROADMAP.md) (planning + investigated-and-rejected log).
+
+---
+
 ## Try it (4 ways)
 
 ### 1. The mock-COLA queue (default screen on the live URL)
