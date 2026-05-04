@@ -86,7 +86,19 @@ export function verifyBatch(
         }
       } else if (msg.event === "item") {
         try {
-          const data = JSON.parse(msg.data) as BatchItemEvent;
+          // Server payload is { batch_id, index, result: VerifyResponse }.
+          // Flatten so callbacks see one merged BatchItemEvent and don't
+          // have to reach through .result for overall_verdict / fields.
+          const raw = JSON.parse(msg.data) as {
+            batch_id?: string;
+            index: number;
+            result: VerifyResponse;
+          };
+          const data: BatchItemEvent = {
+            ...raw.result,
+            index: raw.index,
+            batch_id: raw.batch_id,
+          };
           callbacks.onItem(data);
         } catch {
           callbacks.onError?.(new Error(`Malformed item event: ${msg.data}`));

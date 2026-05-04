@@ -56,13 +56,18 @@ export interface BatchRequest {
   items: BatchItem[];
 }
 
-/** SSE event: item data shape */
+/** SSE event: item data shape (flattened by the client). */
 export interface BatchItemEvent extends VerifyResponse {
   index: number;
+  /** Echoed by the server on every batch SSE frame so multi-item flows can
+   * be correlated in the audit log. Optional because tests / older fixtures
+   * may not include it. */
+  batch_id?: string;
 }
 
 /** SSE event: progress data shape */
 export interface BatchProgressEvent {
   done: number;
   total: number;
+  batch_id?: string;
 }
