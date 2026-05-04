@@ -110,12 +110,12 @@ export function verifyBatch(
 
     onerror(err) {
       callbacks.onError?.(err);
-      // Do not re-throw — fetchEventSource auto-retries on error unless we throw
+      // Re-throw to stop retries (library treats thrown `onerror` as fatal — see fetch.js reject path).
       throw err;
     },
-  }).catch((err: unknown) => {
-    if (controller.signal.aborted) return; // Expected on cleanup
-    callbacks.onError?.(err);
+  }).catch(() => {
+    if (controller.signal.aborted) return;
+    // Fatal errors surfaced in `onerror` above; this handler only absorbs the stray rejection.
   });
 
   return controller;
