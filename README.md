@@ -10,7 +10,7 @@ AI-powered prototype that helps TTB compliance agents verify alcohol-beverage la
 
 ---
 
-## Try it (3 ways)
+## Try it (4 ways)
 
 ### 1. The mock-COLA queue (default screen on the live URL)
 Click any application's **Review** button. The form auto-populates with the structured fields and the label image is auto-attached. Click **Verify Label** — results in ~2–3 seconds.
