@@ -27,7 +27,7 @@ curl -X POST https://ttb-label-verifier-production-4436.up.railway.app/verify \
 
 ---
 
-## Approach (30-second version)
+## TL;DR — what this does
 
 A TTB compliance agent's job — per the discovery interviews — is **visual cross-referencing**. They open an application in COLA (which already has structured data: brand name, class/type, ABV, net contents) and the attached label artwork; their eyes go *form field → label image → match? check.* For 7 fields, 13 applications a day, sometimes 300 in a peak-season batch.
 
