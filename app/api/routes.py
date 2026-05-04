@@ -148,7 +148,9 @@ def _run_comparators(
     ]
 
 
-async def _call_with_retry(client: Any, image_bytes: bytes) -> LabelExtraction:
+async def _call_with_retry(
+    client: Any, image_bytes: bytes
+) -> LabelExtraction:
     """Call the vision client with one retry on failure — FR-012.
 
     Raises the exception if both attempts fail (or if client is None).
@@ -170,10 +172,13 @@ async def _process_single(
     image_bytes: bytes,
     verify_request: VerifyRequest,
     client: Any,
-) -> tuple[VerifyResponse, str]:
+) -> tuple[VerifyResponse, str, LabelExtraction | None]:
     """Core verification pipeline for one image.
 
-    Returns (VerifyResponse, image_sha256_hex).
+    Returns (VerifyResponse, image_sha256_hex, extraction).
+    The extraction is returned separately (not folded into the response) so the
+    audit layer can persist it without leaking provider-specific fields onto
+    the public HTTP contract. extraction is None when the vision call fails.
     Never raises — failures are captured in VerifyResponse.
     """
     request_id = verify_request.request_id or str(uuid.uuid4())
@@ -197,7 +202,7 @@ async def _process_single(
         total_ms = int((time.perf_counter() - total_start) * 1000)
         response = _build_extraction_failed_response(request_id)
         response.latency_ms = LatencyMs(vision=vision_ms, compare=0, total=total_ms)
-        return response, image_sha256
+        return response, image_sha256, None
 
     # --- Comparators + verdict ---
     compare_start = time.perf_counter()
@@ -214,7 +219,7 @@ async def _process_single(
         fields=field_results,
         latency_ms=latency,
     )
-    return response, image_sha256
+    return response, image_sha256, extraction
 
 
 def _write_audit(
@@ -222,11 +227,17 @@ def _write_audit(
     image_sha256: str,
     verify_request: VerifyRequest,
     extraction: LabelExtraction | None,
+    batch_id: str | None = None,
 ) -> None:
-    """Append one audit record to the JSONL log — FR-013."""
+    """Append one audit record to the JSONL log — FR-013.
+
+    batch_id is set for items processed via /verify/batch and None for
+    /verify, so ops can correlate all rows from one bulk submission.
+    """
     write_audit_record({
         "ts": datetime.now(timezone.utc).isoformat(),
         "request_id": response.request_id,
+        "batch_id": batch_id,
         "image_sha256": image_sha256,
         "model_id": MODEL_ID,
         "prompt_version": PROMPT_VERSION,
@@ -269,49 +280,12 @@ async def verify_label(
     if validation_error is not None:
         return validation_error
 
-    # Run the core pipeline
-    image_sha256 = _sha256_hex(image_bytes)
-    request_id = verify_request.request_id or str(uuid.uuid4())
-
-    total_start = time.perf_counter()
-
-    # Vision call with retry (FR-012)
-    vision_start = time.perf_counter()
-    extraction_failed = False
-    extraction: LabelExtraction | None = None
-
-    try:
-        extraction = await _call_with_retry(client, image_bytes)
-    except Exception:
-        extraction_failed = True
-
-    vision_ms = int((time.perf_counter() - vision_start) * 1000)
-
-    if extraction_failed or extraction is None:
-        total_ms = int((time.perf_counter() - total_start) * 1000)
-        response = _build_extraction_failed_response(request_id)
-        response.latency_ms = LatencyMs(vision=vision_ms, compare=0, total=total_ms)
-        # Audit even on failure (FR-013)
-        _write_audit(response, image_sha256, verify_request, None)
-        return response
-
-    # Comparators + verdict
-    compare_start = time.perf_counter()
-    field_results = _run_comparators(verify_request, extraction)
-    overall = compute_overall_verdict(field_results, extraction)
-    compare_ms = int((time.perf_counter() - compare_start) * 1000)
-
-    total_ms = int((time.perf_counter() - total_start) * 1000)
-    latency = LatencyMs(vision=vision_ms, compare=compare_ms, total=total_ms)
-
-    response = VerifyResponse(
-        request_id=request_id,
-        overall_verdict=overall,
-        fields=field_results,
-        latency_ms=latency,
+    # Single source of truth: same pipeline as /verify/batch (FR-012, FR-013).
+    response, image_sha256, extraction = await _process_single(
+        image_bytes, verify_request, client
     )
 
-    # Audit log (FR-013) — after response is built, before returning
+    # Audit log (FR-013) — written for both success and extraction failure.
     _write_audit(response, image_sha256, verify_request, extraction)
 
     return response
@@ -345,6 +319,7 @@ async def verify_batch(
         )
 
     total = len(items_raw)
+    batch_id = str(uuid.uuid4())
     semaphore = asyncio.Semaphore(BATCH_CONCURRENCY)
 
     async def process_item(index: int, item_raw: dict) -> dict:
@@ -356,7 +331,11 @@ async def verify_batch(
             except Exception as exc:
                 return {
                     "event": "error",
-                    "data": json.dumps({"index": index, "error": f"base64 decode failed: {exc}"}),
+                    "data": json.dumps({
+                        "batch_id": batch_id,
+                        "index": index,
+                        "error": f"base64 decode failed: {exc}",
+                    }),
                 }
 
             # Validate MIME and size (FR-002)
@@ -366,6 +345,7 @@ async def verify_batch(
                 return {
                     "event": "error",
                     "data": json.dumps({
+                        "batch_id": batch_id,
                         "index": index,
                         "error": json.loads(error_body),
                     }),
@@ -377,22 +357,25 @@ async def verify_batch(
             except Exception as exc:
                 return {
                     "event": "error",
-                    "data": json.dumps({"index": index, "error": f"invalid payload: {exc}"}),
+                    "data": json.dumps({
+                        "batch_id": batch_id,
+                        "index": index,
+                        "error": f"invalid payload: {exc}",
+                    }),
                 }
 
-            # Run pipeline (FR-012: per-item retry, never whole-batch 503)
-            response, image_sha256 = await _process_single(image_bytes, verify_request, client)
+            # Run pipeline (FR-012: per-item retry, never whole-batch 503).
+            response, image_sha256, extraction = await _process_single(
+                image_bytes, verify_request, client
+            )
 
-            # Audit per item (FR-013)
-            extraction: LabelExtraction | None = None
-            # We don't have extraction here after _process_single abstraction —
-            # for batch we just audit the response shape without extraction detail.
-            # (Full audit available via single /verify; batch is optimized for throughput)
-            _write_audit(response, image_sha256, verify_request, None)
+            # Audit per item (FR-013) — full extraction, parity with /verify.
+            _write_audit(response, image_sha256, verify_request, extraction, batch_id=batch_id)
 
             return {
                 "event": "item",
                 "data": json.dumps({
+                    "batch_id": batch_id,
                     "index": index,
                     "result": response.model_dump(),
                 }),
@@ -415,18 +398,25 @@ async def verify_batch(
             if isinstance(result, Exception):
                 yield {
                     "event": "error",
-                    "data": json.dumps({"error": str(result)}),
+                    "data": json.dumps({"batch_id": batch_id, "error": str(result)}),
                 }
             else:
                 done_count += 1
                 # Yield progress event
                 yield {
                     "event": "progress",
-                    "data": json.dumps({"done": done_count, "total": total}),
+                    "data": json.dumps({
+                        "batch_id": batch_id,
+                        "done": done_count,
+                        "total": total,
+                    }),
                 }
                 # Yield the item result
                 yield result
 
-        yield {"event": "done", "data": json.dumps({"total": total})}
+        yield {
+            "event": "done",
+            "data": json.dumps({"batch_id": batch_id, "total": total}),
+        }
 
     return EventSourceResponse(event_generator())
