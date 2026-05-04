@@ -251,6 +251,46 @@ def _write_audit(
     })
 
 
+def _write_failure_audit(
+    reason: str,
+    *,
+    batch_id: str,
+    image_bytes: bytes | None,
+    raw_payload: dict | None,
+) -> None:
+    """Audit record for a /verify/batch row that failed before reaching
+    `_process_single` — base64 decode, MIME validation, payload parse.
+
+    FR-013 requires one audit record per request. Without this helper the
+    three early-exit branches in `verify_batch` emit error SSE frames but
+    write nothing to the log, so the request is invisible at replay time.
+    The record is structurally identical to a successful one (same keys,
+    same shape) so JSONL consumers don't need a special case.
+    """
+    request_id = str(uuid.uuid4())
+    image_sha256 = _sha256_hex(image_bytes) if image_bytes is not None else ""
+    write_audit_record({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "request_id": request_id,
+        "batch_id": batch_id,
+        "image_sha256": image_sha256,
+        "model_id": MODEL_ID,
+        "prompt_version": PROMPT_VERSION,
+        "form_fields": raw_payload if isinstance(raw_payload, dict) else {},
+        "extracted": None,
+        "field_results": [
+            {
+                "name": "validation",
+                "verdict": Verdict.FAIL.value,
+                "confidence": 0.0,
+                "detail": reason,
+            }
+        ],
+        "overall_verdict": Verdict.FAIL.value,
+        "latency_ms": {"vision": 0, "compare": 0, "total": 0},
+    })
+
+
 # ---------------------------------------------------------------------------
 # POST /verify (FR-001)
 # ---------------------------------------------------------------------------
@@ -321,16 +361,22 @@ async def verify_batch(
     async def process_item(index: int, item_raw: dict) -> dict:
         """Process one batch item; return an SSE-ready dict."""
         async with semaphore:
+            raw_payload = item_raw.get("payload") if isinstance(item_raw, dict) else None
+
             # Decode base64 image
             try:
                 image_bytes = base64.b64decode(item_raw.get("image_b64", ""))
             except Exception as exc:
+                reason = f"base64 decode failed: {exc}"
+                _write_failure_audit(
+                    reason, batch_id=batch_id, image_bytes=None, raw_payload=raw_payload
+                )
                 return {
                     "event": "error",
                     "data": json.dumps({
                         "batch_id": batch_id,
                         "index": index,
-                        "error": f"base64 decode failed: {exc}",
+                        "error": reason,
                     }),
                 }
 
@@ -338,12 +384,23 @@ async def verify_batch(
             validation_error = _validate_image(image_bytes)
             if validation_error is not None:
                 error_body = validation_error.body
+                error_envelope = json.loads(error_body)
+                reason = (
+                    f"image_validation_failed: "
+                    f"{error_envelope.get('error', {}).get('message', 'unknown')}"
+                )
+                _write_failure_audit(
+                    reason,
+                    batch_id=batch_id,
+                    image_bytes=image_bytes,
+                    raw_payload=raw_payload,
+                )
                 return {
                     "event": "error",
                     "data": json.dumps({
                         "batch_id": batch_id,
                         "index": index,
-                        "error": json.loads(error_body),
+                        "error": error_envelope,
                     }),
                 }
 
@@ -351,12 +408,19 @@ async def verify_batch(
             try:
                 verify_request = VerifyRequest(**item_raw.get("payload", {}))
             except Exception as exc:
+                reason = f"invalid payload: {exc}"
+                _write_failure_audit(
+                    reason,
+                    batch_id=batch_id,
+                    image_bytes=image_bytes,
+                    raw_payload=raw_payload,
+                )
                 return {
                     "event": "error",
                     "data": json.dumps({
                         "batch_id": batch_id,
                         "index": index,
-                        "error": f"invalid payload: {exc}",
+                        "error": reason,
                     }),
                 }
 
