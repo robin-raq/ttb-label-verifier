@@ -259,11 +259,9 @@ export function BatchUpload({ prefillZipUrl }: BatchUploadProps = {}) {
               rowBrand: brandByIndex[event.index] ?? "",
             },
           ]);
-          // Optimistic progress if backend doesn't send progress events
-          setProgress((prev) => ({
-            done: (prev?.done ?? 0) + 1,
-            total: prev?.total ?? items.length,
-          }));
+          // Progress is driven by the server's `progress` SSE frames (which
+          // arrive paired with each item). Don't increment here too — that
+          // double-counts and produced "6 of 5 processed" in earlier runs.
         },
         onError(err) {
           const msg = err instanceof Error ? err.message : "Stream error";
