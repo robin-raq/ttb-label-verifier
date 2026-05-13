@@ -22,11 +22,10 @@ from __future__ import annotations
 import json
 import time
 
-import pytest
 from fastapi.testclient import TestClient
 
-from app.api.main import app
 from app.api.deps import get_openai_client
+from app.api.main import app
 
 VALID_PAYLOAD = json.dumps({
     "brand": "OLD TOM DISTILLERY",

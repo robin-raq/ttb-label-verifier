@@ -16,7 +16,7 @@ from app.schemas.api import (
     VerifyRequest,
     VerifyResponse,
 )
-from app.schemas.extraction import FieldConfidence, LabelExtraction
+from app.schemas.extraction import FieldConfidence
 from app.verdict import compute_overall_verdict
 
 

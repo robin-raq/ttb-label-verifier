@@ -4,11 +4,8 @@ Covers brand fuzzy-match and class/type substring rules per the §7.4 catalog.
 """
 from __future__ import annotations
 
-import pytest
-
 from app.comparators.text_match import compare_brand, compare_class_type
 from app.schemas.api import Verdict
-
 
 # ---------------------------------------------------------------------------
 # compare_brand — SPEC §5.1, FR-008

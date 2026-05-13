@@ -23,11 +23,10 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from fastapi.testclient import TestClient
 
-from app.api.main import app
 from app.api.deps import get_openai_client
+from app.api.main import app
 
 
 def test_smart_apostrophe_brand_not_fail(fake_openai_client, make_extraction, tiny_png):

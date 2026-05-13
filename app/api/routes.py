@@ -13,11 +13,10 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 import filetype
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -237,7 +236,7 @@ def _write_audit(
     /verify, so ops can correlate all rows from one bulk submission.
     """
     write_audit_record({
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "request_id": response.request_id,
         "batch_id": batch_id,
         "image_sha256": image_sha256,
@@ -270,7 +269,7 @@ def _write_failure_audit(
     request_id = str(uuid.uuid4())
     image_sha256 = _sha256_hex(image_bytes) if image_bytes is not None else ""
     write_audit_record({
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "request_id": request_id,
         "batch_id": batch_id,
         "image_sha256": image_sha256,
@@ -444,35 +443,43 @@ async def verify_batch(
     async def event_generator():
         done_count = 0
 
-        # Create all tasks
+        async def run_indexed(i: int, item_raw: dict) -> tuple[int, dict | BaseException]:
+            try:
+                return (i, await process_item(i, item_raw))
+            except Exception as exc:
+                return (i, exc)
+
         tasks = [
-            asyncio.create_task(process_item(i, item))
+            asyncio.create_task(run_indexed(i, item))
             for i, item in enumerate(items_raw)
         ]
 
-        # Yield results in index order as they complete
-        # For ordered streaming we use gather (maintains order)
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Stream as tasks finish, but emit SSE in ascending index order (SPEC tests).
+        buffer: dict[int, dict | BaseException] = {}
+        next_index = 0
 
-        for result in results:
-            if isinstance(result, Exception):
-                yield {
-                    "event": "error",
-                    "data": json.dumps({"batch_id": batch_id, "error": str(result)}),
-                }
-            else:
-                done_count += 1
-                # Yield progress event
-                yield {
-                    "event": "progress",
-                    "data": json.dumps({
-                        "batch_id": batch_id,
-                        "done": done_count,
-                        "total": total,
-                    }),
-                }
-                # Yield the item result
-                yield result
+        for finished in asyncio.as_completed(tasks):
+            idx, payload = await finished
+            buffer[idx] = payload
+            while next_index in buffer:
+                raw = buffer.pop(next_index)
+                next_index += 1
+                if isinstance(raw, Exception):
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({"batch_id": batch_id, "error": str(raw)}),
+                    }
+                else:
+                    done_count += 1
+                    yield {
+                        "event": "progress",
+                        "data": json.dumps({
+                            "batch_id": batch_id,
+                            "done": done_count,
+                            "total": total,
+                        }),
+                    }
+                    yield raw
 
         yield {
             "event": "done",

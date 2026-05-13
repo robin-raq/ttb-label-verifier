@@ -9,13 +9,12 @@ from __future__ import annotations
 
 import json
 import os
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.main import app
 from app.api.deps import get_openai_client
+from app.api.main import app
 
 VALID_PAYLOAD = {
     "brand": "OLD TOM DISTILLERY",
@@ -67,7 +66,7 @@ def test_audit_record_written(audit_client):
         files={"image": ("label.png", tiny_png, "image/png")},
     )
     assert audit_file.exists(), "Audit log was not created"
-    lines = [l for l in audit_file.read_text().splitlines() if l.strip()]
+    lines = [line for line in audit_file.read_text().splitlines() if line.strip()]
     assert len(lines) == 1, f"Expected 1 audit line, got {len(lines)}"
 
 
@@ -95,7 +94,7 @@ def test_audit_record_image_bytes_not_persisted(audit_client):
     raw_log = audit_file.read_bytes()
     # Image bytes should not appear verbatim in the log
     # The tiny_png is small enough to check directly
-    assert tiny_png not in raw_log, "Image bytes found verbatim in audit log — MUST be SHA-256 only"
+    assert tiny_png not in raw_log, "Image bytes found verbatim in audit log; MUST be SHA-256 only"
 
 
 def test_audit_record_has_sha256(audit_client):

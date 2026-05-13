@@ -4,8 +4,6 @@ Covers mL/L/fl-oz conversions, tolerance boundary (1.0 mL), and garbage input.
 """
 from __future__ import annotations
 
-import pytest
-
 from app.comparators.volume_match import compare_volume
 from app.schemas.api import Verdict
 

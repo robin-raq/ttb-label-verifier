@@ -6,13 +6,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-import pytest
-
 from app.comparators.warning_match import compare_warning
 from app.constants.ttb_warning import CANONICAL_WARNING
 from app.schemas.api import Verdict
 from app.schemas.extraction import FieldConfidence, LabelExtraction
-
 
 # ---------------------------------------------------------------------------
 # Happy-path — all three sub-results PASS
@@ -62,7 +59,9 @@ class TestWarningText:
         text_result = next(r for r in results if r.name == "warning_text")
         assert text_result.verdict == Verdict.FAIL
 
-    def test_typo_does_not_affect_caps_and_bold(self, make_extraction: Callable[..., LabelExtraction]):
+    def test_typo_does_not_affect_caps_and_bold(
+        self, make_extraction: Callable[..., LabelExtraction]
+    ):
         extraction = make_extraction(
             warning_text=CANONICAL_WARNING.replace("women", "xomen")
         )

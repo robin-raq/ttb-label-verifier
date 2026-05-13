@@ -42,9 +42,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.main import app
 from app.api.deps import get_openai_client
-
+from app.api.main import app
 
 EXPECTED_FIELD_NAMES = {
     "brand",

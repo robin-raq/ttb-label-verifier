@@ -5,6 +5,8 @@ from one test don't bleed into the next.
 """
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 
 
@@ -12,8 +14,7 @@ import pytest
 def reset_rate_limiter():
     """Reset slowapi in-memory storage before each test."""
     from app.api.main import limiter
-    try:
+
+    with contextlib.suppress(AttributeError):
         limiter._storage.reset()  # type: ignore[attr-defined]
-    except AttributeError:
-        pass
     yield

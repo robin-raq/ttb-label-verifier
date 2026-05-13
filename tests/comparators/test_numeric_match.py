@@ -4,8 +4,6 @@ Covers ABV ±0.1 percentage point tolerance plus null/low-confidence paths.
 """
 from __future__ import annotations
 
-import pytest
-
 from app.comparators.numeric_match import compare_abv
 from app.schemas.api import Verdict
 

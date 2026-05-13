@@ -14,7 +14,7 @@ import base64
 import filetype
 from openai import AsyncOpenAI
 
-from app.extraction.prompts import PROMPT_VERSION, SYSTEM_PROMPT
+from app.extraction.prompts import SYSTEM_PROMPT
 from app.schemas.extraction import LabelExtraction
 
 # FR-002 accepts these three MIME types. Anything else is rejected upstream by

@@ -29,7 +29,10 @@ from app.api.security import SecureHeadersMiddleware
 # In test mode (TESTING=1) the limit is raised so unit tests don't trip it.
 # ---------------------------------------------------------------------------
 
-_is_testing = os.environ.get("TESTING", "0") == "1" or os.environ.get("PYTEST_CURRENT_TEST") is not None
+_is_testing = (
+    os.environ.get("TESTING", "0") == "1"
+    or os.environ.get("PYTEST_CURRENT_TEST") is not None
+)
 
 _rate_limit = "10000/minute" if _is_testing else "30/minute"
 limiter = Limiter(key_func=get_remote_address, default_limits=[_rate_limit])

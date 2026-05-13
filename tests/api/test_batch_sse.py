@@ -11,15 +11,14 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 import struct
 import zlib
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.main import app
 from app.api.deps import get_openai_client
+from app.api.main import app
 
 
 def _make_tiny_png() -> bytes:

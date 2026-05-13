@@ -17,7 +17,7 @@ All items from the original v1 scope landed. Evidence: PR #1 (`feat/post-feedbac
 - [x] `app/comparators/{text_match,numeric_match,volume_match,warning_match}.py`
 - [x] `app/verdict.py` — combine field results
 - [x] `app/audit/jsonl_logger.py` — append-only audit log (mode 0o600)
-- [x] `app/api/routes.py` — `POST /verify` and `POST /verify/batch` (SSE)
+- [x] `app/api/routes.py` — `POST /verify` and `POST /verify/batch` (SSE; batch uses `asyncio.as_completed` + reorder buffer so rows stream while preserving ascending `index`)
 - [x] `filetype` (replaced `python-magic`) file-type validation, 10 MiB cap, image format whitelist
 - [x] `app/extraction/__init__.py` — `VisionClient` Protocol seam (the production-deployment swap point)
 - [x] `app/api/deps.py` — env-var-driven factory (`VISION_PROVIDER`)
@@ -90,7 +90,6 @@ Each item is concrete enough to pick up cold. Effort estimates and "why deferred
 
 ### Reliability & Resilience
 - **Multi-LLM fallback / Azure OpenAI client.** Seam now exists (`VisionClient` Protocol + `VISION_PROVIDER` env var). Implementation work: drop an `AzureOpenAIVisionClient` next to the OpenAI one, add a branch in `get_vision_client`. ~1 day for Azure; ~half day each for Anthropic / Gemini behind the same seam.
-- **True streaming SSE — `gather` → `as_completed` + reorder buffer.** Today `event_generator` waits for *all* tasks before yielding the first SSE frame; client sees nothing until the whole batch completes. Stated design ("stream as each completes") is not achieved. ~half day. Caught in PR #1's review (Path #3, deferred).
 - **Async-safe audit writes.** `write_audit_record` is a synchronous syscall called from the async event loop; with `BATCH_CONCURRENCY=25` and 500-item batches, sequential blocking writes can stall SSE delivery. Wrap in `run_in_executor` or use `anyio.to_thread`. ~1 hour. Caught in PR #1's review.
 - **Retry on low extraction confidence.** Currently retries only on transport errors. Add: if any field's confidence < 0.5, re-call vision in `detail=high` mode and merge results. ~2 hours.
 - **Image preprocessing pipeline.** OpenCV-based de-skew + glare reduction before vision call. Replicate's restoration models tested — too slow (5+ s). Try lightweight CV first. ~half day spike.
@@ -121,7 +120,6 @@ Each item is concrete enough to pick up cold. Effort estimates and "why deferred
 - **Live-region announcements.** When verification completes, announce the verdict via `aria-live="polite"` so screen readers don't have to be focused on the result card to hear it.
 
 ### Code quality
-- **`gather` → `as_completed` (see Reliability above)** — the single highest-leverage backend change deferred from PR #1.
 - **De-duplicate `tiny_png` fixture** — `test_batch_audit.py` reimplements the conftest fixture verbatim. Caught in PR #1's review.
 - **Drop `extraction_failed` boolean** — redundant with `extraction is None` in `_process_single`.
 - **Unify `_ALLOWED_MIMES`** — `routes.py` and `openai_vision.py` declare parallel constants with divergent semantics (route rejects unknown; client silently coerces to PNG).

@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies (including dev extras)
         run: pip install -e ".[dev]"
 
+      - name: Ruff lint
+        run: ruff check app tests
+
       - name: Check for leaked secrets (NFR-002)
         # Exits 1 if any OpenAI-style key is found in tracked paths.
         # Excludes test fixtures and .env.example which may contain placeholders.
@@ -73,6 +76,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: ESLint
+        working-directory: frontend
+        run: npm run lint
 
       - name: TypeScript type-check
         working-directory: frontend

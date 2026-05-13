@@ -60,7 +60,7 @@ A TTB compliance batch is N *different* applications, so there's intentionally n
 
 A TTB compliance agent's job — per the discovery interviews — is **visual cross-referencing**. They open an application in COLA (which already has structured data: brand name, class/type, ABV, net contents) and the attached label artwork; their eyes go *form field → label image → match? check.* For 7 fields, 13 applications a day, sometimes 300 in a peak-season batch.
 
-This prototype mechanizes the cross-reference. One OpenAI multimodal call extracts the visible label content as a typed JSON object; deterministic Python comparators decide PASS / FAIL / NEEDS_REVIEW per field; an overall verdict is composed and returned in under 5 seconds. The agent retains final authority — the tool is decision support, not decision automation.
+This prototype mechanizes the cross-reference. One OpenAI multimodal call extracts the visible label content as a typed JSON object; deterministic Python comparators decide PASS / FAIL / NEEDS_REVIEW per field; an overall verdict is composed and returned in about five seconds on a warm path (network and model latency vary; treat ~5s as a design target, not a guarantee). The agent retains final authority — the tool is decision support, not decision automation.
 
 ---
 
@@ -211,7 +211,7 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 
 ### 10. Async fan-out for batch (asyncio.Semaphore(25)), not a job queue
 
-**Decision:** `POST /verify/batch` accepts up to 500 JSON items (`image_b64` + per-item `payload`), processes them concurrently via an `asyncio.Semaphore(25)`, and streams per-item results via SSE. The SPA unpacks **ZIP + `manifest.csv`** in the browser and builds that payload list — heterogeneous batches without COLA wiring. No Celery / RQ / job-queue infrastructure.
+**Decision:** `POST /verify/batch` accepts up to 500 JSON items (`image_b64` + per-item `payload`), processes them concurrently via an `asyncio.Semaphore(25)`, and streams per-item results via SSE as each row finishes, **re-emitting in ascending row index** so the UI stays aligned with `manifest.csv`. Implementation detail: `asyncio.as_completed` plus a small reorder buffer (not `gather`, which would block the stream until the slowest row). The SPA unpacks **ZIP + `manifest.csv`** in the browser and builds that payload list — heterogeneous batches without COLA wiring. No Celery / RQ / job-queue infrastructure.
 
 **Alternatives considered:** real task queue (Celery + Redis) with "submit job, poll for results."
 
@@ -330,7 +330,7 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 |---|---|
 | Docker (multi-stage) | Node-build frontend → Python-build backend → slim runtime |
 | Railway | one-command deploy from GitHub; auto-rebuild on push |
-| GitHub Actions | `pytest` on PRs (mocked LLM only — `RUN_LLM_TESTS=1` not in CI) |
+| GitHub Actions | `ruff check`, `pytest`, frontend `eslint` + `tsc` + `vite build` on PRs (mocked LLM only — `RUN_LLM_TESTS=1` not in CI) |
 
 ---
 

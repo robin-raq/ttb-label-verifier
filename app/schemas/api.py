@@ -5,12 +5,12 @@ forbids introducing new `error.code` values without a SPEC version bump.
 """
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class Verdict(str, Enum):
+class Verdict(StrEnum):
     """SPEC §1 — three-state verdict, never PASS/FAIL only."""
 
     PASS = "PASS"
@@ -18,7 +18,7 @@ class Verdict(str, Enum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Stable error vocabulary. SPEC §3.1 — change requires SPEC bump."""
 
     INVALID_IMAGE_TYPE = "INVALID_IMAGE_TYPE"

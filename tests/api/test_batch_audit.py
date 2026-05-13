@@ -14,8 +14,8 @@ import zlib
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.main import app
 from app.api.deps import get_openai_client
+from app.api.main import app
 
 
 def _tiny_png() -> bytes:
@@ -138,7 +138,6 @@ def test_batch_audit_records_share_one_batch_id(batch_audit_client):
 def test_single_verify_audit_has_no_batch_id_or_null(batch_audit_client):
     """Single /verify either omits batch_id or sets it to null — never reuses one."""
     client, audit_file = batch_audit_client
-    png_b64 = base64.b64encode(_tiny_png()).decode()
     # post via /verify (single)
     resp = client.post(
         "/verify",

@@ -6,11 +6,9 @@ the required headers are present and CSP does not contain unsafe directives.
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 from fastapi.testclient import TestClient
-
 
 VALID_PAYLOAD = json.dumps({
     "brand": "TEST",
@@ -28,8 +26,8 @@ def secure_client(fake_openai_client, make_extraction, tiny_png, monkeypatch):
 
     # Re-import app to pick up new env vars
     # We need the security middleware to see the env at startup
-    from app.api.main import app
     from app.api.deps import get_openai_client
+    from app.api.main import app
 
     fake_openai_client.extraction = make_extraction()
     app.dependency_overrides[get_openai_client] = lambda: fake_openai_client
@@ -48,7 +46,7 @@ def test_hsts_header_present(secure_client):
         data={"payload": VALID_PAYLOAD},
         files={"image": ("label.png", tiny_png, "image/png")},
     )
-    assert "strict-transport-security" in resp.headers or "Strict-Transport-Security" in resp.headers
+    assert any(k.lower() == "strict-transport-security" for k in resp.headers)
 
 
 def test_x_content_type_options_nosniff(secure_client):
