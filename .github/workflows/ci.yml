@@ -29,6 +29,9 @@ jobs:
       - name: Ruff lint
         run: ruff check app tests
 
+      - name: Mypy type-check
+        run: mypy app tests --ignore-missing-imports
+
       - name: Check for leaked secrets (NFR-002)
         # Exits 1 if any OpenAI-style key is found in tracked paths.
         # Excludes test fixtures and .env.example which may contain placeholders.

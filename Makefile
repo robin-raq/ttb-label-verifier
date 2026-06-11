@@ -1,4 +1,4 @@
-.PHONY: install test test-smoke ci-cov-comparators ci-cov-verdict ci-cov-api eval lint format
+.PHONY: install test test-smoke ci-cov-comparators ci-cov-verdict ci-cov-api eval lint format mypy
 
 install:
 	pip install -e ".[dev]"
@@ -33,3 +33,6 @@ lint:
 
 format:
 	ruff format app tests
+
+mypy:
+	mypy app tests --ignore-missing-imports

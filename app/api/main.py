@@ -10,11 +10,13 @@ Import `app` from here in tests and ASGI servers.
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path, PurePosixPath
+from typing import cast
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -49,7 +51,13 @@ app = FastAPI(
 
 # Attach limiter to app state so slowapi middleware can find it
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(
+    RateLimitExceeded,
+    cast(
+        "Callable[[Request, Exception], Response | Awaitable[Response]]",
+        _rate_limit_exceeded_handler,
+    ),
+)
 
 # ---------------------------------------------------------------------------
 # Middleware (order matters: applied bottom-up to requests, top-down to responses)
