@@ -43,13 +43,18 @@ class OpenAIVisionClient:
         Model ID to use for structured-output extraction.
     """
 
+    # Per-call wall-clock budget (seconds). Keeps both attempts in _call_with_retry
+    # within a predictable window; the route's fallback converts timeout into
+    # NEEDS_REVIEW rather than an uncaught hang.
+    TIMEOUT_SECONDS: float = 30.0
+
     def __init__(
         self,
         api_key: str | None = None,
         model: str = "gpt-4o-2024-08-06",
     ) -> None:
         self._model = model
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(api_key=api_key, timeout=self.TIMEOUT_SECONDS)
 
     async def extract(self, image_bytes: bytes, prompt_version: str) -> LabelExtraction:
         """Single multimodal call returning a validated LabelExtraction.

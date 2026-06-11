@@ -23,6 +23,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.deps import get_openai_client
 from app.audit.jsonl_logger import write_audit_record
 from app.extraction import VisionClient
+from app.extraction.prompts import PROMPT_VERSION
 from app.schemas.api import (
     ErrorCode,
     ErrorEnvelope,
@@ -45,12 +46,6 @@ ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 BATCH_MAX_ITEMS = 500  # FR-014
 BATCH_CONCURRENCY = 25  # asyncio.Semaphore value
 RETRY_BACKOFF_SECS = 1  # FR-012 retry backoff
-
-# Prompt version for audit log (FR-016). Imported from B3 if available.
-try:
-    from app.extraction.openai_vision import PROMPT_VERSION
-except ImportError:
-    PROMPT_VERSION = "v1"  # fallback while B3 is not yet merged
 
 # Model identifier for audit log
 MODEL_ID = os.environ.get("MODEL_NAME", "fake-test")
