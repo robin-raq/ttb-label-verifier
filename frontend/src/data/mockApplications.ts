@@ -91,7 +91,7 @@ export const MOCK_APPLICATIONS: MockApplication[] = [
       net_contents: "750 mL",
     },
     label_image_url: "/sample-labels/03_review_glare.png",
-    scenario_hint: "Photo has glare — image_quality may trigger NEEDS_REVIEW",
+    scenario_hint: "Photo has mild glare — informational probe; verdict may vary (see fixtures README)",
   },
   {
     cola_id: "TTB-2026-001237",

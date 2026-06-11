@@ -129,7 +129,7 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 
 ### 2. Mock COLA application queue is the default screen
 
-**Decision:** the live demo opens on a queue of three pre-loaded applications. Clicking **Review** auto-populates the form with the application's structured data and auto-attaches its label image.
+**Decision:** the live demo opens on a queue of 10 pre-loaded applications. Clicking **Review** auto-populates the form with the application's structured data and auto-attaches its label image.
 
 **Alternatives considered:**
 - Default to manual single-label upload (the original design).
@@ -137,7 +137,7 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 
 **Why this:** the discovery interview explicitly notes agents *don't type* — they pull data from COLA. A mock queue is the most faithful prototype of that workflow: the agent picks an application, doesn't enter anything, gets a verdict. It also makes the demo a one-click affair for reviewers, eliminates the "why am I typing this?" cognitive friction that the form fields invite, and aligns the prototype's surface with how production COLA→our-tool integration would actually look.
 
-**Tradeoff:** the queue is hard-coded — three fixed applications, not a real queue with auth or pagination. A reviewer who wants to test their own image still needs the manual single-label tab. Production swaps the JSON file for a real COLA API call; nothing else changes.
+**Tradeoff:** the queue is hard-coded — 10 fixed applications, not a real queue with auth or pagination. A reviewer who wants to test their own image still needs the manual single-label tab. Production swaps the JSON file for a real COLA API call; nothing else changes.
 
 ### 3. Single OpenAI multimodal call, not two-model handoff
 
@@ -157,7 +157,7 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 
 **Alternatives considered:** ask the LLM "does this label match this form?" with a JSON answer.
 
-**Why this:** verdicts must be reproducible, auditable, and unit-testable. Pure functions get `pytest --cov=app.comparators=100%` for free; LLM-judged comparisons get expensive non-determinism. The Government Warning specifically is a federal-statute byte-equality check (`27 CFR §16.21`); a stochastic model cannot be the judge.
+**Why this:** verdicts must be reproducible, auditable, and unit-testable. Pure functions get `pytest --cov=app.comparators=100%` for free; LLM-judged comparisons get expensive non-determinism. The Government Warning specifically uses a deterministic text match on OCR output against the federal statute (`27 CFR §16.21`); a stochastic model cannot be the judge.
 
 **Tradeoff:** comparators must encode every legitimate variation explicitly (e.g. brand-name normalization for smart quotes, volume-unit normalization). If a real-world variant isn't in the comparator, it'll fail when an LLM might have been forgiving. We catch this with the `NEEDS_REVIEW` state — see decision #6.
 
@@ -183,13 +183,13 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 
 ### 7. Hard-coded canonical TTB warning text — not LLM-judged
 
-**Decision:** `app/constants/ttb_warning.py` contains the byte-perfect 27 CFR §16.21 text. The comparator normalizes whitespace and compares `==`. The LLM is never asked "is this warning valid?"
+**Decision:** `app/constants/ttb_warning.py` contains the canonical 27 CFR §16.21 text. The comparator normalizes whitespace on **model-extracted** warning text and compares for equality. It does not inspect label image pixels. The LLM is never asked "is this warning valid?"
 
 **Alternatives considered:** ask the LLM whether the warning matches the regulation.
 
 **Why this:** the warning is a fixed federal statute. Every character matters. Letting a model decide if it matches would invite hallucinated approvals on subtly altered warnings — Jenny's quote in the discovery interview describes producers trying *exactly that* ("creative wording, smaller font, title case instead of all caps").
 
-**Tradeoff:** OCR errors (e.g. "Sur9eon" for "Surgeon") cause false rejections. We mitigate by retrying with higher-detail vision when confidence is low, and route any below-0.95-confidence warning extraction to NEEDS_REVIEW.
+**Tradeoff:** OCR errors (e.g. "Sur9eon" for "Surgeon") cause false rejections. We route any below-0.95-confidence warning extraction to NEEDS_REVIEW rather than PASS.
 
 ### 8. Two-tier confidence thresholds: 0.95 for warning, 0.80 for fuzzy fields
 
@@ -275,7 +275,7 @@ This is also why a single-vendor switch (e.g. swapping OpenAI for public Gemini)
 
 **Why this:** programmatically rendered labels are deterministic (re-running the generator produces byte-identical PNGs), free (no LLM tokens for fixtures), and have real text the OCR can read. They exercise the full pipeline reliably.
 
-**Tradeoff:** they look synthetic, not photographic. Specifically, the rendered "GOVERNMENT WARNING:" prefix sits on its own line, which the model occasionally misclassifies — so fixture #01 currently returns FAIL where we'd want PASS. This is a *prompt-tuning issue* exposed by the eval, not a pipeline defect; it's documented in `tests/fixtures/labels/README.md` and `ROADMAP.md` as v1.1 work.
+**Tradeoff:** they look synthetic, not photographic. Real-world labels with gothic/script type or glare will stress the comparators more than these PNGs do. The informational probe (`03_review_glare`) captures the glare sensitivity case; the eval suite exercises the full pipeline against all 16 fixtures.
 
 ### 17. MIT license, public GitHub
 
@@ -362,8 +362,7 @@ Honest list — the take-home asks for trade-offs and limitations.
 - **No real auth.** Anyone with the URL can submit.
 - **ZIP is client-expanded only.** Large archives are fully loaded in-browser before POST; giant batches can stress memory versus a server-side ingestion job (`ROADMAP.md`).
 - **Volume normalization is naive.** Handles mL ↔ L ↔ fl oz with ±1 mL tolerance; obscure units (e.g. `375 ml e` European convention) might fail.
-- **Mock COLA queue is hard-coded.** Three fixed applications, no auth, no pagination. Real COLA integration is a v2 swap.
-- **Fixture #01 currently returns FAIL on the live deploy** because the rendered "GOVERNMENT WARNING:" prefix sits on its own line and the model intermittently classifies it as a heading. Documented in `tests/fixtures/labels/README.md` — prompt-tuning fix for v1.1.
+- **Mock COLA queue is hard-coded.** 10 fixed applications, no auth, no pagination. Real COLA integration is a v2 swap.
 
 ---
 
@@ -380,23 +379,35 @@ Two follow-ups discussed in discovery that are intentionally **not** in this pro
 ## Testing
 
 ```bash
-make test                  # full suite (~194 collected; LLM-gated cases skipped by default)
+make test                  # full suite (199 collected; 17 LLM-gated tests skipped by default)
 make ci-cov-comparators    # comparators ≥95% line coverage gate
 make ci-cov-verdict        # app.verdict via test_smoke verdict cases, ≥90% gate
 make ci-cov-api            # api/ + contract/ + adversarial/ ≥80% gate
-make eval                  # mocked eval harness (pipeline wiring)
-RUN_LLM_TESTS=1 make eval-real    # eval against real OpenAI (burns tokens)
+make eval                  # fixture YAML integrity + generator checks (no tokens)
+make eval-real             # real OpenAI eval — requires OPENAI_API_KEY; burns tokens
 make regenerate-fixtures   # rebuild test labels from generate_fixtures.py
+make mypy                  # static type-check (also runs in CI)
 ```
+
+**Real-model evaluation (paid):**
+
+```bash
+RUN_LLM_TESTS=1 make eval-real
+# or: RUN_LLM_TESTS=1 pytest tests/eval/test_eval.py -v
+```
+
+- **14 regression fixtures** assert `expected_overall` against live GPT-4o extraction.
+- **2 informational probes** (`03_review_glare`, `adv_04_prompt_injection_image`) run the pipeline but only check documented invariants — excluded from strict pass-rate counts.
+- Comparators compare **extracted OCR text** after normalization; they do not validate visible image pixels.
 
 **Test inventory:**
 - `tests/test_smoke.py` — foundation imports, canonical warning sanity, FR-017 precedence, `compute_overall_verdict` unit cases.
-- `tests/comparators/` — unit tests (rapidfuzz / volume / warning), includes adversarial cases (smart quotes, title-case prefix, malformed numerics).
-- `tests/api/` — FastAPI TestClient + mocked OpenAI client; covers FR-001/002/007/012/013/014/015/017 plus security headers, rate limiting, path traversal on static SPA, batch audit.
+- `tests/comparators/` — unit tests (rapidfuzz / volume / warning), includes adversarial cases (title-case prefix, malformed numerics).
+- `tests/api/` — FastAPI TestClient + mocked OpenAI client; covers FR-001/002/007/012/013/014/015/017 plus security headers, rate limiting, path traversal on static SPA, batch audit, timeouts.
 - `tests/contract/` — response-shape stability + `error.code` enum lock (silent vocabulary expansion fails the test).
 - `tests/adversarial/` — prompt-injection-in-image, smart-apostrophe brand match.
 - `tests/performance/` — NFR-001 mocked synthetic-latency gate (≤ 5000 ms).
-- `tests/eval/` — fixture YAML integrity + (optional) real-LLM pipeline check when `RUN_LLM_TESTS=1`.
+- `tests/eval/` — fixture integrity, YAML schema, async real-LLM eval when `RUN_LLM_TESTS=1`.
 - `tests/llm/` — opt-in real-OpenAI smoke.
 
 ---
@@ -453,7 +464,7 @@ ttb-label-verifier/
 │   │   │   ├── BatchUpload.tsx           # ZIP + manifest.csv → SSE batch
 │   │   │   └── ResultCard.tsx            # per-field verdict pill
 │   │   ├── utils/batchManifest.ts        # ZIP + manifest.csv → per-row payloads
-│   │   ├── data/mockApplications.ts      # 3 fake COLA records
+│   │   ├── data/mockApplications.ts      # 10 fake COLA records
 │   │   ├── api/
 │   │   │   ├── client.ts                 # multipart + SSE-over-POST
 │   │   │   └── types.ts                  # mirrors backend Pydantic models
@@ -470,7 +481,7 @@ ttb-label-verifier/
 │   ├── adversarial/                      # prompt-injection, smart-apostrophe
 │   ├── performance/                      # NFR-001 latency gate
 │   ├── eval/                             # pipeline-vs-fixtures (LLM-gated)
-│   ├── fixtures/labels/                  # 3 PNGs + .expected.yaml + generator
+│   ├── fixtures/labels/                  # 16 PNGs + .expected.yaml + generator
 │   └── conftest.py                       # FakeOpenAIClient, make_extraction, tiny_png
 ├── Dockerfile                            # multi-stage Node + Python build
 ├── railway.toml                          # single-service Railway config
