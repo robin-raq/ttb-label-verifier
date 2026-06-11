@@ -16,7 +16,7 @@
 
 import DOMPurify from "dompurify";
 import React, { useEffect, useRef, useState } from "react";
-import { ApiError, verifySingleLabel } from "../api/client";
+import { ApiError, VerifyTimeoutError, verifySingleLabel, VERIFY_SLOW_HINT_MS } from "../api/client";
 import type { MockApplication } from "../data/mockApplications";
 import type { VerifyRequest, VerifyResponse, Verdict } from "../api/types";
 import { ResultCard } from "./ResultCard";
@@ -72,6 +72,7 @@ export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [slowNotice, setSlowNotice] = useState<string | null>(null);
   const [prefilledFromQueue, setPrefilledFromQueue] = useState(false);
 
   // When a queue application is passed in, seed form values and fetch the
@@ -148,6 +149,7 @@ export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setSlowNotice(null);
     setResult(null);
 
     if (!selectedFile) {
@@ -169,16 +171,25 @@ export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
     };
 
     setLoading(true);
+    const slowTimer = window.setTimeout(() => {
+      setSlowNotice("Verification is taking longer than expected.");
+    }, VERIFY_SLOW_HINT_MS);
     try {
       const response = await verifySingleLabel(selectedFile, payload);
       setResult(response);
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof VerifyTimeoutError) {
+        setError(
+          "Verification timed out after 30 seconds. Route this label to manual review."
+        );
+      } else if (err instanceof ApiError) {
         setError(`Error ${err.status}: ${DOMPurify.sanitize(err.message)}`);
       } else {
         setError("Unexpected error. Check that the backend is running.");
       }
     } finally {
+      window.clearTimeout(slowTimer);
+      setSlowNotice(null);
       setLoading(false);
     }
   }
@@ -188,6 +199,7 @@ export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
     setSelectedFile(null);
     setResult(null);
     setError(null);
+    setSlowNotice(null);
     setPrefilledFromQueue(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -346,6 +358,12 @@ export function SingleLabelForm({ prefill }: SingleLabelFormProps) {
           </button>
         </div>
       </form>
+
+      {slowNotice && loading && (
+        <div className="alert alert--info" role="status">
+          {slowNotice}
+        </div>
+      )}
 
       {error && (
         <div className="alert alert--error" role="alert">

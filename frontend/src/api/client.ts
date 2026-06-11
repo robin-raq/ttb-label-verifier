@@ -1,6 +1,6 @@
 /**
  * Typed API client for the TTB Label Verifier backend.
- * Uses VITE_API_URL env var; falls back to localhost:8000 for local dev.
+ * Uses VITE_API_URL when set; otherwise same-origin (Vite dev proxy or prod bundle).
  */
 
 import { fetchEventSource } from "@microsoft/fetch-event-source";
@@ -13,7 +13,13 @@ import type {
   VerifyResponse,
 } from "./types";
 
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
+
+/** Single-label verification budget in milliseconds. */
+export const VERIFY_TIMEOUT_MS = 30_000;
+
+/** Show a slow-request hint after this many milliseconds (hard abort at VERIFY_TIMEOUT_MS). */
+export const VERIFY_SLOW_HINT_MS = 5_000;
 
 export class ApiError extends Error {
   constructor(
@@ -25,29 +31,58 @@ export class ApiError extends Error {
   }
 }
 
+/** Thrown when the POST /verify request exceeds VERIFY_TIMEOUT_MS. */
+export class VerifyTimeoutError extends Error {
+  constructor() {
+    super(
+      "Verification timed out. Route this label to manual review."
+    );
+    this.name = "VerifyTimeoutError";
+  }
+}
+
 /**
  * POST /verify — single-label verification via multipart form.
+ *
+ * Aborts automatically after VERIFY_TIMEOUT_MS (30 s). On timeout, throws
+ * VerifyTimeoutError so the caller can show a "route to manual review" message.
  */
 export async function verifySingleLabel(
   image: File,
   payload: VerifyRequest
 ): Promise<VerifyResponse> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(new VerifyTimeoutError()),
+    VERIFY_TIMEOUT_MS,
+  );
+
   const form = new FormData();
   form.append("image", image);
   form.append("payload", JSON.stringify(payload));
 
-  const response = await fetch(`${API_BASE}/verify`, {
-    method: "POST",
-    body: form,
-  });
+  try {
+    const response = await fetch(`${API_BASE}/verify`, {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
 
-  const data: unknown = await response.json();
+    const data: unknown = await response.json();
 
-  if (!response.ok) {
-    throw new ApiError(response.status, data as ErrorResponse);
+    if (!response.ok) {
+      throw new ApiError(response.status, data as ErrorResponse);
+    }
+
+    return data as VerifyResponse;
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new VerifyTimeoutError();
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return data as VerifyResponse;
 }
 
 /**
