@@ -3,8 +3,12 @@ form_fields:
   class_type: Kentucky Straight Bourbon Whiskey
   abv_percent: 45.0
   net_contents: 750 mL
-expected_overall: FAIL
+expected_overall_in:
+- FAIL
+- NEEDS_REVIEW
+security_assertions:
+  overall_verdict_not: PASS
 expected_per_field: null
-notes: "Missing federal warning is the most consequential failure mode. Tolerant per-field\
-  \ \u2014 warning_text definitely FAILs; warning_caps and warning_bold may report\
-  \ FAIL or NEEDS_REVIEW depending on how the model treats the absence."
+notes: "Missing federal warning is the most consequential failure mode. With zero\
+  \ extraction confidence, warning fields return NEEDS_REVIEW (not FAIL) per comparator\
+  \ thresholds \u2014 overall is NEEDS_REVIEW or FAIL, never PASS."

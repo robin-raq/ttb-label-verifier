@@ -67,7 +67,7 @@ def _make_client_with_fake_response(json_payload: str) -> tuple[OpenAIVisionClie
     mock_response.choices = [MagicMock()]
     mock_response.choices[0].message.content = json_payload
     mock_create.return_value = mock_response
-    client._client.chat.completions.create = mock_create  # type: ignore[attr-defined]
+    client._client.chat.completions.create = mock_create  # type: ignore[attr-defined, method-assign]
     return client, mock_create
 
 
@@ -87,6 +87,7 @@ def _valid_extraction_json() -> str:
 
 def _sent_data_url(mock_create: AsyncMock) -> str:
     """Pull the data URL out of the recorded chat.completions.create call."""
+    assert mock_create.await_args is not None, "mock_create was never awaited"
     kwargs = mock_create.await_args.kwargs
     user_message = kwargs["messages"][1]
     return user_message["content"][0]["image_url"]["url"]

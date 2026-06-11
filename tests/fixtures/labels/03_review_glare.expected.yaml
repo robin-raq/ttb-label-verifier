@@ -3,6 +3,9 @@ form_fields:
   class_type: Kentucky Straight Bourbon Whiskey
   abv_percent: 45.0
   net_contents: 750 mL
-expected_overall: NEEDS_REVIEW
+eval_tier: informational
 expected_per_field: null
-notes: Tests FR-017 image-quality gate. Tolerant per-field.
+notes: 'Informational real-model probe. Mild synthetic glare (GaussianBlur radius=3
+  + 43%-alpha ellipse) is model-sensitive: warning_text confidence can flip between
+  0.90 and 1.0, changing overall between NEEDS_REVIEW and PASS. FR-017 (image_quality=''poor'')
+  is covered by deterministic mocked tests in tests/api/test_image_quality_gate.py.'
